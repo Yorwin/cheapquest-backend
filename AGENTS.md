@@ -495,6 +495,7 @@ Todas declaradas en `<dependencies>`, ninguna en `<systemPath>`.
 ## 13. Convenciones operativas
 
 - **Commits**: usar el comando `/commit` (definido en `.opencode/commands/commit.md`). Conventional Commits, español o inglés indistintamente, primera línea ≤ 72 caracteres.
+- **Commits granulares**: preferiblemente un commit por bloque lógico (cliente, servicio, refactor, test). Hacer `git add` selectivo antes de invocar `/commit` para que solo entre al commit lo relevante al bloque. Pasar el bloque como argumento ayuda al agente a enfocar el mensaje, p. ej. `/commit CheapShark client with backoff`.
 - **Branches**: `main` siempre deployable. Features en `feature/<slug>`, fixes en `fix/<slug>`.
 - **PR**: descripción breve + checklist de tests + screenshot/log si aplica.
 - **Secrets**: nunca en el repo. Solo `application.properties` con `${ENV_VAR}` y `.env.example` documentando las variables necesarias.

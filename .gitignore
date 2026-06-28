@@ -9,6 +9,7 @@ target/
 .settings/
 .factorypath
 .apt_generated/
+.metadata/
 
 # Secrets and local config — NEVER commit
 firebase-credentials.json

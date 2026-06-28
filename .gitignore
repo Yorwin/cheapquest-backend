@@ -1,0 +1,21 @@
+target/
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.classpath
+.project
+.settings/
+.factorypath
+.apt_generated/
+
+# Secrets and local config — NEVER commit
+firebase-credentials.json
+application-local.properties
+.env
+.env.local
+
+# Logs
+*.log
+logs/

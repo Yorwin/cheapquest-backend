@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "java-architect": {
+      "source": "jeffallan/claude-skills",
+      "sourceType": "github",
+      "skillPath": "skills/java-architect/SKILL.md",
+      "computedHash": "7f202287a1ad819b41a9235b8bb570eed217a431e4e60d7196fd9330d52001c2"
+    },
+    "java-coding-standards": {
+      "source": "affaan-m/everything-claude-code",
+      "sourceType": "github",
+      "skillPath": "skills/java-coding-standards/SKILL.md",
+      "computedHash": "3d6574c4fc1bb4d4882d333aa4d643fc5e42d696af1987c5fe44eb1e3dfffca6"
+    },
+    "modern-javascript-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/javascript-typescript/skills/modern-javascript-patterns/SKILL.md",
+      "computedHash": "0d820adbeaa73ee1f6b1e075fb3ef1698d5d68ad59cb30fc935c857025e9b24f"
+    }
+  }
+}

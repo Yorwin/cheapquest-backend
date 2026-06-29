@@ -1,0 +1,47 @@
+package com.cheapquest.backend.dto.rawg;
+
+import com.google.gson.annotations.SerializedName;
+import java.util.List;
+
+public record RawgGameDto(
+        int id,
+        String slug,
+        String name,
+        @SerializedName("name_original") String nameOriginal,
+        String description,
+        @SerializedName("description_raw") String descriptionRaw,
+        String released,
+        boolean tba,
+        String updated,
+        @SerializedName("background_image") String backgroundImage,
+        @SerializedName("background_image_additional") String backgroundImageAdditional,
+        String website,
+        double rating,
+        @SerializedName("rating_top") int ratingTop,
+        List<RawgRatingDto> ratings,
+        @SerializedName("ratings_count") int ratingsCount,
+        @SerializedName("reviews_count") int reviewsCount,
+        @SerializedName("reviews_text_count") int reviewsTextCount,
+        Integer metacritic,
+        @SerializedName("metacritic_url") String metacriticUrl,
+        int playtime,
+        @SerializedName("parents_count") int parentsCount,
+        @SerializedName("additions_count") int additionsCount,
+        @SerializedName("game_series_count") int gameSeriesCount,
+        @SerializedName("screenshots_count") int screenshotsCount,
+        @SerializedName("movies_count") int moviesCount,
+        @SerializedName("creators_count") int creatorsCount,
+        @SerializedName("achievements_count") int achievementsCount,
+        @SerializedName("parent_achievements_count") int parentAchievementsCount,
+        RawgClipDto clip,
+        @SerializedName("alternative_names") List<String> alternativeNames,
+        List<RawgDeveloperDto> developers,
+        List<RawgPublisherDto> publishers,
+        List<RawgGenreDto> genres,
+        List<RawgTagDto> tags,
+        List<RawgPlatformEntryDto> platforms,
+        List<RawgPlatformEntryDto> parentPlatforms,
+        RawgEsrbRatingDto esrbRating,
+        List<RawgStoreEntryDto> stores,
+        @SerializedName("short_screenshots") List<RawgScreenshotDto> shortScreenshots) {
+}

@@ -1,0 +1,361 @@
+package com.cheapquest.backend.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.cheapquest.backend.client.RawgClient;
+import com.cheapquest.backend.domain.AggregatedGame;
+import com.cheapquest.backend.domain.rawg.RawgDetails;
+import com.cheapquest.backend.dto.rawg.RawgCreatorDto;
+import com.cheapquest.backend.dto.rawg.RawgGameDto;
+import com.cheapquest.backend.dto.rawg.RawgScreenshotDto;
+import com.cheapquest.backend.exception.GameNotFoundException;
+import com.cheapquest.backend.mapper.RawgMapper;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+class RawgAggregationServiceTest {
+
+    private RawgClient client;
+    private RawgMapper mapper;
+    private Clock fixedClock;
+    private RawgAggregationService service;
+
+    @BeforeEach
+    void setUp() {
+        client = mock(RawgClient.class);
+        mapper = mock(RawgMapper.class);
+        fixedClock = Clock.fixed(Instant.parse("2026-01-01T00:00:00Z"), ZoneOffset.UTC);
+        service = new RawgAggregationService(client, mapper, fixedClock);
+    }
+
+    @Test
+    void aggregate_returnsAggregatedGameWithRawgDetails() {
+        var farCry = game("far-cry", "Far Cry");
+        var detail = detailWithCounts("far-cry", "Far Cry", 0, 0, 0, 0);
+        var rawg = new RawgDetails(
+                "far-cry", "Far Cry", "Far Cry", "2004-03-22",
+                "desc", "desc", "https://x.jpg", null, null,
+                3.9, 4, 89, 0, 0, 0, 0,
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of());
+
+        when(client.searchByName("Far Cry", 10)).thenReturn(List.of(farCry));
+        when(mapper.pickExactMatch(List.of(farCry), "Far Cry")).thenReturn(Optional.of(farCry));
+        lenient().when(mapper.pickClosestByLevenshtein(List.of(farCry), "Far Cry")).thenReturn(Optional.empty());
+        when(client.getDetails("far-cry")).thenReturn(Optional.of(detail));
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+
+        AggregatedGame result = service.aggregate("Far Cry");
+
+        assertThat(result.cheapSharkTitle()).isEqualTo("Far Cry");
+        assertThat(result.canonicalName()).isEqualTo("Far Cry");
+        assertThat(result.rawgSlug()).isEqualTo("far-cry");
+        assertThat(result.cheapShark()).isNull();
+        assertThat(result.rawg()).isSameAs(rawg);
+        assertThat(result.fetchedAt()).isEqualTo(Instant.parse("2026-01-01T00:00:00Z"));
+    }
+
+    @Test
+    void aggregate_fallsBackToLevenshteinWhenNoExactMatch() {
+        var farCry = game("far-cry", "Far Cry");
+        var detail = detailWithCounts("far-cry", "Far Cry", 0, 0, 0, 0);
+        var rawg = stubDetails("far-cry", "Far Cry");
+
+        when(client.searchByName("Farcry", 10)).thenReturn(List.of(farCry));
+        when(mapper.pickExactMatch(List.of(farCry), "Farcry")).thenReturn(Optional.empty());
+        when(mapper.pickClosestByLevenshtein(List.of(farCry), "Farcry")).thenReturn(Optional.of(farCry));
+        when(client.getDetails("far-cry")).thenReturn(Optional.of(detail));
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+
+        AggregatedGame result = service.aggregate("Farcry");
+
+        assertThat(result.rawgSlug()).isEqualTo("far-cry");
+        verify(mapper).pickClosestByLevenshtein(List.of(farCry), "Farcry");
+    }
+
+    @Test
+    void aggregate_throwsWhenNoMatch() {
+        when(client.searchByName("Nonexistent", 10)).thenReturn(List.of());
+        when(mapper.pickExactMatch(List.of(), "Nonexistent")).thenReturn(Optional.empty());
+        when(mapper.pickClosestByLevenshtein(List.of(), "Nonexistent")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.aggregate("Nonexistent"))
+                .isInstanceOf(GameNotFoundException.class)
+                .hasMessageContaining("Nonexistent")
+                .hasMessageContaining("got 0 candidates");
+    }
+
+    @Test
+    void aggregate_throwsWhenDetailEmpty() {
+        var farCry = game("far-cry", "Far Cry");
+
+        when(client.searchByName("Far Cry", 10)).thenReturn(List.of(farCry));
+        when(mapper.pickExactMatch(List.of(farCry), "Far Cry")).thenReturn(Optional.of(farCry));
+        lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
+        when(client.getDetails("far-cry")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.aggregate("Far Cry"))
+                .isInstanceOf(GameNotFoundException.class)
+                .hasMessageContaining("no RAWG detail")
+                .hasMessageContaining("far-cry");
+    }
+
+    @Test
+    void aggregate_callsAdditionsWhenCountGreaterThanZero() {
+        var portal = game("portal", "Portal");
+        var detail = detailWithCounts("portal", "Portal", 4, 0, 0, 0);
+        var rtx = game("portal-with-rtx", "Portal with RTX");
+        var rawg = stubDetails("portal", "Portal");
+
+        when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
+        when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
+        lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
+        when(client.getDetails("portal")).thenReturn(Optional.of(detail));
+        when(client.getAdditions("portal")).thenReturn(List.of(rtx));
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+
+        service.aggregate("Portal");
+
+        verify(client, times(1)).getAdditions("portal");
+    }
+
+    @Test
+    void aggregate_skipsAdditionsWhenCountIsZero() {
+        var portal = game("portal", "Portal");
+        var detail = detailWithCounts("portal", "Portal", 0, 0, 0, 0);
+        var rawg = stubDetails("portal", "Portal");
+
+        when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
+        when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
+        lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
+        when(client.getDetails("portal")).thenReturn(Optional.of(detail));
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+
+        service.aggregate("Portal");
+
+        verify(client, never()).getAdditions(anyString());
+    }
+
+    @Test
+    void aggregate_callsCreatorsWhenCountGreaterThanZero() {
+        var portal = game("portal", "Portal");
+        var detail = detailWithCounts("portal", "Portal", 0, 30, 0, 0);
+        var rawg = stubDetails("portal", "Portal");
+
+        when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
+        when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
+        lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
+        when(client.getDetails("portal")).thenReturn(Optional.of(detail));
+        when(client.getDevelopmentTeam("portal")).thenReturn(
+                List.of(new RawgCreatorDto(1, "Gabe", "gabe", null, null, "Founder", 1)));
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+
+        service.aggregate("Portal");
+
+        verify(client, times(1)).getDevelopmentTeam("portal");
+    }
+
+    @Test
+    void aggregate_skipsCreatorsWhenCountIsZero() {
+        var portal = game("portal", "Portal");
+        var detail = detailWithCounts("portal", "Portal", 0, 0, 0, 0);
+        var rawg = stubDetails("portal", "Portal");
+
+        when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
+        when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
+        lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
+        when(client.getDetails("portal")).thenReturn(Optional.of(detail));
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+
+        service.aggregate("Portal");
+
+        verify(client, never()).getDevelopmentTeam(anyString());
+    }
+
+    @Test
+    void aggregate_callsMoviesWhenCountGreaterThanZero() {
+        var portal = game("portal", "Portal");
+        var detail = detailWithCounts("portal", "Portal", 0, 0, 2, 0);
+        var rawg = stubDetails("portal", "Portal");
+
+        when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
+        when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
+        lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
+        when(client.getDetails("portal")).thenReturn(Optional.of(detail));
+        when(client.getMovies("portal")).thenReturn(List.of());
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+
+        service.aggregate("Portal");
+
+        verify(client, times(1)).getMovies("portal");
+    }
+
+    @Test
+    void aggregate_continuesWhenSubfetchThrows() {
+        var portal = game("portal", "Portal");
+        var detail = detailWithCounts("portal", "Portal", 5, 10, 2, 20);
+        var rawg = stubDetails("portal", "Portal");
+
+        when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
+        when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
+        lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
+        when(client.getDetails("portal")).thenReturn(Optional.of(detail));
+        when(client.getAdditions("portal")).thenThrow(new RuntimeException("RAWG down"));
+        when(client.getDevelopmentTeam("portal")).thenThrow(new RuntimeException("RAWG down"));
+        when(client.getMovies("portal")).thenThrow(new RuntimeException("RAWG down"));
+        when(client.getScreenshots("portal")).thenThrow(new RuntimeException("RAWG down"));
+        lenient().when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+
+        AggregatedGame result = service.aggregate("Portal");
+
+        assertThat(result).isNotNull();
+        assertThat(result.rawg()).isSameAs(rawg);
+        verify(mapper).toDetails(eq(detail), anyList(), anyList(), anyList(), anyList());
+    }
+
+    @Test
+    void aggregate_throwsOnEmptyName() {
+        assertThatThrownBy(() -> service.aggregate(""))
+                .isInstanceOf(GameNotFoundException.class)
+                .hasMessageContaining("empty name");
+        assertThatThrownBy(() -> service.aggregate(null))
+                .isInstanceOf(GameNotFoundException.class)
+                .hasMessageContaining("empty name");
+    }
+
+    @Test
+    void aggregate_usesDefaultPageSize10() {
+        var portal = game("portal", "Portal");
+        var detail = detailWithCounts("portal", "Portal", 0, 0, 0, 0);
+        var rawg = stubDetails("portal", "Portal");
+
+        when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
+        when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
+        lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
+        when(client.getDetails("portal")).thenReturn(Optional.of(detail));
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+
+        service.aggregate("Portal");
+
+        verify(client).searchByName("Portal", 10);
+    }
+
+    @Test
+    void aggregate_usesCustomPageSize() {
+        var portal = game("portal", "Portal");
+        var detail = detailWithCounts("portal", "Portal", 0, 0, 0, 0);
+        var rawg = stubDetails("portal", "Portal");
+
+        when(client.searchByName("Portal", 25)).thenReturn(List.of(portal));
+        when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
+        lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
+        when(client.getDetails("portal")).thenReturn(Optional.of(detail));
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+
+        service.aggregate("Portal", 25);
+
+        verify(client).searchByName("Portal", 25);
+    }
+
+    @Test
+    void aggregate_usesShortScreenshotsWhenCountMatches() {
+        var portal = game("portal", "Portal");
+        var shortShots = List.of(
+                new RawgScreenshotDto(1L, "https://x/1.jpg", 0, 0, false),
+                new RawgScreenshotDto(2L, "https://x/2.jpg", 0, 0, false));
+        var detail = mock(RawgGameDto.class);
+        when(detail.slug()).thenReturn("portal");
+        when(detail.name()).thenReturn("Portal");
+        when(detail.additionsCount()).thenReturn(0);
+        when(detail.creatorsCount()).thenReturn(0);
+        when(detail.moviesCount()).thenReturn(0);
+        when(detail.screenshotsCount()).thenReturn(2);
+        when(detail.shortScreenshots()).thenReturn(shortShots);
+        var rawg = stubDetails("portal", "Portal");
+
+        when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
+        when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
+        lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
+        when(client.getDetails("portal")).thenReturn(Optional.of(detail));
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+
+        service.aggregate("Portal");
+
+        verify(client, never()).getScreenshots(anyString());
+    }
+
+    @Test
+    void aggregate_fetchesScreenshotsWhenCountExceedsShortList() {
+        var portal = game("portal", "Portal");
+        var shortShots = List.of(
+                new RawgScreenshotDto(1L, "https://x/1.jpg", 0, 0, false));
+        var detail = mock(RawgGameDto.class);
+        when(detail.slug()).thenReturn("portal");
+        when(detail.name()).thenReturn("Portal");
+        when(detail.additionsCount()).thenReturn(0);
+        when(detail.creatorsCount()).thenReturn(0);
+        when(detail.moviesCount()).thenReturn(0);
+        when(detail.screenshotsCount()).thenReturn(10);
+        when(detail.shortScreenshots()).thenReturn(shortShots);
+        var rawg = stubDetails("portal", "Portal");
+
+        when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
+        when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
+        lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
+        when(client.getDetails("portal")).thenReturn(Optional.of(detail));
+        when(client.getScreenshots("portal")).thenReturn(List.of());
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+
+        service.aggregate("Portal");
+
+        verify(client, times(1)).getScreenshots("portal");
+    }
+
+    private static RawgGameDto game(String slug, String name) {
+        return new RawgGameDto(
+                1, slug, name, name,
+                null, null, null, false, null,
+                null, null, null,
+                0.0, 0, null, 0, 0, 0, null, null,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, null,
+                null, null, null, null, null, null, null, null, null, null);
+    }
+
+    private static RawgGameDto detailWithCounts(String slug, String name,
+            int additions, int creators, int movies, int screenshots) {
+        return new RawgGameDto(
+                1, slug, name, name,
+                null, null, null, false, null,
+                null, null, null,
+                0.0, 0, null, 0, 0, 0, null, null,
+                0, 0, additions, 0, screenshots, movies, creators, 0, 0,
+                null, null,
+                null, null, null, null, null, null, null, null, null);
+    }
+
+    private static RawgDetails stubDetails(String slug, String name) {
+        return new RawgDetails(
+                slug, name, name, null,
+                null, null, null, null, null,
+                null, null, null, 0, 0, 0, 0,
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of());
+    }
+}

@@ -290,6 +290,9 @@ Aplicar el skill `java-coding-standards` (en `.agents/skills/java-coding-standar
 - Tests de integración: levantar `HttpClient` real contra endpoints mockeados con `WireMock` (añadir como dep de test).
 - JaCoCo ≥ 85% en paquetes `domain` y `service`.
 
+#### Stack de tests obligatorio
+Todos los tests deben escribirse con **JUnit 5 (Jupiter)**, **AssertJ** para aserciones fluidas y **Mockito** para mocks de clientes externos. Las dependencias se declaran en `pom.xml` (§12). No se añaden frameworks de test adicionales.
+
 ---
 
 ## 10. Project Structure

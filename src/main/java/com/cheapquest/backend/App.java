@@ -19,6 +19,7 @@ import com.cheapquest.backend.mapper.RawgMapper;
 import com.cheapquest.backend.service.GameAggregationService;
 import com.cheapquest.backend.service.RawgAggregationService;
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import java.net.http.HttpClient;
 import java.util.List;
 
@@ -29,128 +30,133 @@ import java.util.List;
  */
 public final class App {
 
-	private App() {
-	}
+    private App() {
+    }
 
-	public static void main(String[] args) {
-		AppProperties props = AppProperties.fromClasspath();
+    public static void main(String[] args) {
+        AppProperties props = AppProperties.fromClasspath();
 
-		HttpClient http = HttpClientFactory.create(props.cheapsharkTimeoutSeconds());
-		HttpFetcher fetcher = new DefaultHttpFetcher(http, props.cheapsharkTimeoutSeconds(),
-				props.cheapsharkRetryMaxAttempts(), props.cheapsharkRetryBaseDelayMillis());
-		Gson gson = new Gson();
+        int cheapsharkTimeout = props.cheapsharkTimeoutSeconds();
+        int rawgTimeout = props.rawgTimeoutSeconds();
+        int sharedTimeout = Math.max(cheapsharkTimeout, rawgTimeout);
+        HttpClient http = HttpClientFactory.create(sharedTimeout);
+        HttpFetcher cheapsharkFetcher = new DefaultHttpFetcher(http, cheapsharkTimeout,
+                props.cheapsharkRetryMaxAttempts(), props.cheapsharkRetryBaseDelayMillis());
+        HttpFetcher rawgFetcher = new DefaultHttpFetcher(http, rawgTimeout,
+                props.rawgRetryMaxAttempts(), props.rawgRetryBaseDelayMillis());
+        Gson gson = new GsonBuilder().disableHtmlEscaping().create();
 
-		CheapSharkClient client = new CheapSharkClient(fetcher, gson, props.cheapsharkBaseUrl());
-		CheapSharkMapper mapper = new CheapSharkMapper();
-		RawgClient rawgClient = new RawgClient(fetcher, gson, props.rawgBaseUrl(), props.rawgApiKey());
-		RawgMapper rawgMapper = new RawgMapper();
-		RawgAggregationService rawgService = new RawgAggregationService(rawgClient, rawgMapper);
+        CheapSharkClient client = new CheapSharkClient(cheapsharkFetcher, gson, props.cheapsharkBaseUrl());
+        CheapSharkMapper mapper = new CheapSharkMapper();
+        RawgClient rawgClient = new RawgClient(rawgFetcher, gson, props.rawgBaseUrl(), props.rawgApiKey());
+        RawgMapper rawgMapper = new RawgMapper();
+        RawgAggregationService rawgService = new RawgAggregationService(rawgClient, rawgMapper);
 
-		System.out.println("[smoke] cheapshark.baseUrl=" + props.cheapsharkBaseUrl());
-		System.out.println("[smoke] rawg.baseUrl=" + props.rawgBaseUrl());
-		System.out.println("[smoke] running with " + GameFixtures.all().size() + " fixture games");
+        System.out.println("[smoke] cheapshark.baseUrl=" + props.cheapsharkBaseUrl());
+        System.out.println("[smoke] rawg.baseUrl=" + props.rawgBaseUrl());
+        System.out.println("[smoke] running with " + GameFixtures.all().size() + " fixture games");
 
-		List<CheapSharkStoreDto> stores = loadStoresOrAbort(client);
-		if (stores == null) {
-			return;
-		}
-		System.out.println("[stores] loaded " + stores.size() + " (" + countActive(stores) + " active)");
+        List<CheapSharkStoreDto> stores = loadStoresOrAbort(client);
+        if (stores == null) {
+            return;
+        }
+        System.out.println("[stores] loaded " + stores.size() + " (" + countActive(stores) + " active)");
 
-		GameAggregationService service = new GameAggregationService(client, mapper, stores);
+        GameAggregationService service = new GameAggregationService(client, mapper, stores);
 
-		for (HardcodedGame game : GameFixtures.all()) {
-			runOneGame(service, game);
-			runOneRawgGame(rawgService, game);
-		}
+        for (HardcodedGame game : GameFixtures.all()) {
+            runOneGame(service, game);
+            runOneRawgGame(rawgService, game);
+        }
 
-		System.out.println("[smoke] end");
-	}
+        System.out.println("[smoke] end");
+    }
 
-	private static List<CheapSharkStoreDto> loadStoresOrAbort(CheapSharkClient client) {
-		try {
-			return client.getStores();
-		} catch (Exception e) {
-			System.out.println("[smoke] ABORT: could not load /stores: " + e.getMessage());
-			return null;
-		}
-	}
+    private static List<CheapSharkStoreDto> loadStoresOrAbort(CheapSharkClient client) {
+        try {
+            return client.getStores();
+        } catch (Exception e) {
+            System.out.println("[smoke] ABORT: could not load /stores: " + e.getMessage());
+            return null;
+        }
+    }
 
-	private static void runOneGame(GameAggregationService service, HardcodedGame game) {
-		System.out.println("--- " + game.name() + " (CheapShark) ---");
-		try {
-			GameDeals deals = service.aggregateByName(game.name());
-			printGameDeals(deals);
-		} catch (GameNotFoundException e) {
-			System.out.println("  " + e.getMessage());
-		} catch (Exception e) {
-			System.out.println("  ERROR: " + e.getClass().getSimpleName() + ": " + e.getMessage());
-		}
-	}
+    private static void runOneGame(GameAggregationService service, HardcodedGame game) {
+        System.out.println("--- " + game.name() + " (CheapShark) ---");
+        try {
+            GameDeals deals = service.aggregateByName(game.name());
+            printGameDeals(deals);
+        } catch (GameNotFoundException e) {
+            System.out.println("  " + e.getMessage());
+        } catch (Exception e) {
+            System.out.println("  ERROR: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+        }
+    }
 
-	private static void runOneRawgGame(RawgAggregationService service, HardcodedGame game) {
-		System.out.println("--- " + game.name() + " (RAWG) ---");
-		try {
-			AggregatedGame agg = service.aggregate(game.name());
-			printRawg(agg);
-		} catch (GameNotFoundException e) {
-			System.out.println("  " + e.getMessage());
-		} catch (Exception e) {
-			System.out.println("  ERROR: " + e.getClass().getSimpleName() + ": " + e.getMessage());
-		}
-	}
+    private static void runOneRawgGame(RawgAggregationService service, HardcodedGame game) {
+        System.out.println("--- " + game.name() + " (RAWG) ---");
+        try {
+            AggregatedGame agg = service.aggregate(game.name());
+            printRawg(agg);
+        } catch (GameNotFoundException e) {
+            System.out.println("  " + e.getMessage());
+        } catch (Exception e) {
+            System.out.println("  ERROR: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+        }
+    }
 
-	private static void printGameDeals(GameDeals gd) {
-		System.out.println("  [game]   gameId=%s searchTitle=\"%s\" name=\"%s\" internalName=%s".formatted(gd.gameId(),
-				gd.searchTitle(), gd.name(), gd.internalName()));
-		System.out.println("  [thumb]  %s".formatted(gd.thumb()));
-		System.out.println("  [price]  cheapestEver=%s | totalOffers=%d".formatted(gd.cheapestEver(), gd.offerCount()));
+    private static void printGameDeals(GameDeals gd) {
+        System.out.println("  [game]   gameId=%s searchTitle=\"%s\" name=\"%s\" internalName=%s".formatted(gd.gameId(),
+                gd.searchTitle(), gd.name(), gd.internalName()));
+        System.out.println("  [thumb]  %s".formatted(gd.thumb()));
+        System.out.println("  [price]  cheapestEver=%s | totalOffers=%d".formatted(gd.cheapestEver(), gd.offerCount()));
 
-		if (gd.bestDeal() != null) {
-			Offer b = gd.bestDeal();
-			System.out.println("  [best]   %s (id=%s) @ %s (was %s, -%s%%) | icon=%s".formatted(b.storeName(),
-					b.storeId(), b.price(), b.retailPrice(), b.savings(), b.storeIconUrl()));
-		}
-		if (!gd.offers().isEmpty()) {
-			System.out.println("  [other offers] (%d)".formatted(gd.offers().size()));
-			for (Offer o : gd.offers()) {
-				System.out.println("    - %s (id=%s) @ %s (was %s, -%s%%) | icon=%s".formatted(o.storeName(),
-						o.storeId(), o.price(), o.retailPrice(), o.savings(), o.storeIconUrl()));
-			}
-		}
-	}
+        if (gd.bestDeal() != null) {
+            Offer b = gd.bestDeal();
+            System.out.println("  [best]   %s (id=%s) @ %s (was %s, -%s%%) | icon=%s".formatted(b.storeName(),
+                    b.storeId(), b.price(), b.retailPrice(), b.savings(), b.storeIconUrl()));
+        }
+        if (!gd.offers().isEmpty()) {
+            System.out.println("  [other offers] (%d)".formatted(gd.offers().size()));
+            for (Offer o : gd.offers()) {
+                System.out.println("    - %s (id=%s) @ %s (was %s, -%s%%) | icon=%s".formatted(o.storeName(),
+                        o.storeId(), o.price(), o.retailPrice(), o.savings(), o.storeIconUrl()));
+            }
+        }
+    }
 
-	private static void printRawg(AggregatedGame agg) {
-		RawgDetails r = agg.rawg();
-		System.out.println("  [rawg]   searchTitle=\"%s\" name=\"%s\" slug=%s released=%s".formatted(
-				agg.cheapSharkTitle(), r.name(), r.slug(), r.released()));
-		System.out.println("  [trailer] %s".formatted(r.trailerUrl() == null ? "(none)" : r.trailerUrl()));
-		System.out.println("  [header]  %s".formatted(r.headerImage()));
-		if (r.description() != null) {
-			String desc = r.description().replaceAll("<[^>]+>", "").trim();
-			if (desc.length() > 160) {
-				desc = desc.substring(0, 160) + "...";
-			}
-			System.out.println("  [desc]    %s".formatted(desc));
-		}
-		System.out.println("  [genres]  %s".formatted(r.genres().size()));
-		System.out.println("  [tags]    %s".formatted(r.tags().size()));
-		System.out.println("  [platforms] %s".formatted(r.platforms().size()));
-		System.out.println("  [dlcs]    %s".formatted(r.dlcs().size()));
-		System.out.println("  [creators] %s".formatted(r.creators().size()));
-		System.out.println("  [screenshots] %s".formatted(r.screenshots().size()));
-		if (!r.dlcs().isEmpty()) {
-			for (var d : r.dlcs()) {
-				System.out.println("    - dlc: %s (%s) [%s]".formatted(d.name(), d.released(), d.slug()));
-			}
-		}
-		if (!r.creators().isEmpty()) {
-			for (var c : r.creators()) {
-				System.out.println("    - creator: %s [%s] (%s)".formatted(c.name(), c.slug(), c.position()));
-			}
-		}
-	}
+    private static void printRawg(AggregatedGame agg) {
+        RawgDetails r = agg.rawg();
+        System.out.println("  [rawg]   searchTitle=\"%s\" name=\"%s\" slug=%s released=%s".formatted(
+                agg.cheapSharkTitle(), r.name(), r.slug(), r.released()));
+        System.out.println("  [trailer] %s".formatted(r.trailerUrl() == null ? "(none)" : r.trailerUrl()));
+        System.out.println("  [header]  %s".formatted(r.headerImage()));
+        if (r.description() != null) {
+            String desc = r.description().replaceAll("<[^>]+>", "").trim();
+            if (desc.length() > 160) {
+                desc = desc.substring(0, 160) + "...";
+            }
+            System.out.println("  [desc]    %s".formatted(desc));
+        }
+        System.out.println("  [genres]  %s".formatted(r.genres().size()));
+        System.out.println("  [tags]    %s".formatted(r.tags().size()));
+        System.out.println("  [platforms] %s".formatted(r.platforms().size()));
+        System.out.println("  [dlcs]    %s".formatted(r.dlcs().size()));
+        System.out.println("  [creators] %s".formatted(r.creators().size()));
+        System.out.println("  [screenshots] %s".formatted(r.screenshots().size()));
+        if (!r.dlcs().isEmpty()) {
+            for (var d : r.dlcs()) {
+                System.out.println("    - dlc: %s (%s) [%s]".formatted(d.name(), d.released(), d.slug()));
+            }
+        }
+        if (!r.creators().isEmpty()) {
+            for (var c : r.creators()) {
+                System.out.println("    - creator: %s [%s] (%s)".formatted(c.name(), c.slug(), c.position()));
+            }
+        }
+    }
 
-	private static long countActive(List<CheapSharkStoreDto> stores) {
-		return stores.stream().filter(s -> s.isActive() == 1).count();
-	}
+    private static long countActive(List<CheapSharkStoreDto> stores) {
+        return stores.stream().filter(s -> s.isActive() == 1).count();
+    }
 }

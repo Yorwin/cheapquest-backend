@@ -96,6 +96,14 @@ public final class AppProperties {
         return Integer.parseInt(props.getProperty("rawg.timeout-seconds", "10"));
     }
 
+    public int rawgRetryMaxAttempts() {
+        return Integer.parseInt(props.getProperty("rawg.retry.max-attempts", "3"));
+    }
+
+    public long rawgRetryBaseDelayMillis() {
+        return Long.parseLong(props.getProperty("rawg.retry.base-delay-millis", "1000"));
+    }
+
     public String deeplBaseUrl() {
         return props.getProperty("deepl.base-url");
     }

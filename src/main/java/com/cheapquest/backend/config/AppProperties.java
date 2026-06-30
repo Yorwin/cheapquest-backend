@@ -124,6 +124,10 @@ public final class AppProperties {
         return props.getProperty("firebase.credentials.path");
     }
 
+    public String firestoreCollectionGamesPath() {
+        return props.getProperty("firestore.collection.games-path", "games");
+    }
+
     public String adminRefreshToken() {
         return props.getProperty("admin.refresh.token");
     }

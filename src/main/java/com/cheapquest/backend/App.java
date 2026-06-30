@@ -1,6 +1,7 @@
 package com.cheapquest.backend;
 
 import com.cheapquest.backend.client.CheapSharkClient;
+import com.cheapquest.backend.client.FirebaseClient;
 import com.cheapquest.backend.client.RawgClient;
 import com.cheapquest.backend.config.AppProperties;
 import com.cheapquest.backend.config.DefaultHttpFetcher;
@@ -22,6 +23,9 @@ import com.cheapquest.backend.service.GameAggregationService;
 import com.cheapquest.backend.service.GameMerger;
 import com.cheapquest.backend.service.RawgAggregationService;
 import com.cheapquest.backend.service.ValidationService;
+import com.google.cloud.firestore.Firestore;
+import com.google.firebase.FirebaseApp;
+import com.google.firebase.cloud.FirestoreClient;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import java.net.http.HttpClient;
@@ -69,6 +73,11 @@ public final class App {
 
         boolean firebaseReady = new FirebaseConfig(props).initialize();
         System.out.println("[firebase] " + (firebaseReady ? "ready" : "skipped (missing FIREBASE_PROJECT_ID or FIREBASE_CREDENTIALS_PATH)"));
+
+        FirebaseClient firebaseClient = firebaseReady
+                ? new FirebaseClient(FirestoreClient.getFirestore(FirebaseApp.getInstance()), props)
+                : null;
+        System.out.println("[firebase.client] " + (firebaseClient != null ? "ready" : "skipped (firebase not ready)"));
 
         List<CheapSharkStoreDto> stores = loadStoresOrAbort(client);
         if (stores == null) {

@@ -15,6 +15,13 @@ public record RawgDetails(
         String trailerUrl,
         String website,
         Double rating,
+        /**
+         * Maximum value of RAWG's rating scale (always {@code 5} as of
+         * the current API contract — every game uses a 0-5 star scale).
+         * Not the highest rating this game has ever received: for that
+         * see {@link #rating}. Carried through for round-trip fidelity
+         * with the upstream API and the Firestore document.
+         */
         Integer ratingTop,
         Integer metacritic,
         int additionsCount,

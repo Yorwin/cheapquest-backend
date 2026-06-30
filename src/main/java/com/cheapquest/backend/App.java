@@ -19,6 +19,7 @@ import com.cheapquest.backend.fixtures.HardcodedGame;
 import com.cheapquest.backend.mapper.CheapSharkMapper;
 import com.cheapquest.backend.mapper.RawgMapper;
 import com.cheapquest.backend.service.GameAggregationService;
+import com.cheapquest.backend.service.GameMerger;
 import com.cheapquest.backend.service.RawgAggregationService;
 import com.cheapquest.backend.service.ValidationService;
 import com.google.gson.Gson;
@@ -55,6 +56,7 @@ public final class App {
         RawgMapper rawgMapper = new RawgMapper();
         RawgAggregationService rawgService = new RawgAggregationService(rawgClient, rawgMapper);
         ValidationService validator = new ValidationService();
+        GameMerger merger = new GameMerger();
 
         System.out.println("[smoke] cheapshark.baseUrl=" + props.cheapsharkBaseUrl());
         System.out.println("[smoke] rawg.baseUrl=" + props.rawgBaseUrl());
@@ -72,8 +74,7 @@ public final class App {
         GameAggregationService service = new GameAggregationService(client, mapper, stores);
 
         for (HardcodedGame game : GameFixtures.all()) {
-            runOneGame(service, game);
-            runOneRawgGame(rawgService, validator, game);
+            runCombinedAggregation(service, rawgService, validator, merger, game);
         }
 
         System.out.println("[smoke] end");
@@ -88,30 +89,48 @@ public final class App {
         }
     }
 
-    private static void runOneGame(GameAggregationService service, HardcodedGame game) {
-        System.out.println("--- " + game.name() + " (CheapShark) ---");
+    private static void runCombinedAggregation(GameAggregationService csService,
+            RawgAggregationService rawgService, ValidationService validator, GameMerger merger,
+            HardcodedGame game) {
+        System.out.println("--- " + game.name() + " ---");
+        GameDeals deals = tryCheapShark(csService, game.name());
+        AggregatedGame rawgAgg = tryRawg(rawgService, game.name());
+        if (deals == null && rawgAgg == null) {
+            System.out.println("  [validation] both sources failed, nothing to validate");
+            return;
+        }
+        AggregatedGame merged = merger.merge(deals, rawgAgg);
+        ValidationReport report = validator.evaluate(merged);
+        printValidation(report);
+    }
+
+    private static GameDeals tryCheapShark(GameAggregationService service, String name) {
+        System.out.println("  [cheapshark]");
         try {
-            GameDeals deals = service.aggregateByName(game.name());
+            GameDeals deals = service.aggregateByName(name);
             printGameDeals(deals);
+            return deals;
         } catch (GameNotFoundException e) {
-            System.out.println("  " + e.getMessage());
+            System.out.println("    " + e.getMessage());
+            return null;
         } catch (Exception e) {
-            System.out.println("  ERROR: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            System.out.println("    ERROR: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            return null;
         }
     }
 
-    private static void runOneRawgGame(RawgAggregationService service, ValidationService validator,
-            HardcodedGame game) {
-        System.out.println("--- " + game.name() + " (RAWG) ---");
+    private static AggregatedGame tryRawg(RawgAggregationService service, String name) {
+        System.out.println("  [rawg]");
         try {
-            AggregatedGame agg = service.aggregate(game.name());
+            AggregatedGame agg = service.aggregate(name);
             printRawg(agg);
-            ValidationReport report = validator.evaluate(agg);
-            printValidation(report);
+            return agg;
         } catch (GameNotFoundException e) {
-            System.out.println("  " + e.getMessage());
+            System.out.println("    " + e.getMessage());
+            return null;
         } catch (Exception e) {
-            System.out.println("  ERROR: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            System.out.println("    ERROR: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            return null;
         }
     }
 

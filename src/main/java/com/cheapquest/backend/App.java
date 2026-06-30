@@ -13,11 +13,13 @@ import com.cheapquest.backend.domain.GameDeals;
 import com.cheapquest.backend.domain.Offer;
 import com.cheapquest.backend.domain.rawg.RawgDetails;
 import com.cheapquest.backend.domain.validation.ValidationReport;
+import com.cheapquest.backend.dto.firebase.GameDocumentDto;
 import com.cheapquest.backend.dto.cheapshark.CheapSharkStoreDto;
 import com.cheapquest.backend.exception.GameNotFoundException;
 import com.cheapquest.backend.fixtures.GameFixtures;
 import com.cheapquest.backend.fixtures.HardcodedGame;
 import com.cheapquest.backend.mapper.CheapSharkMapper;
+import com.cheapquest.backend.mapper.FirebaseMapper;
 import com.cheapquest.backend.mapper.RawgMapper;
 import com.cheapquest.backend.service.GameAggregationService;
 import com.cheapquest.backend.service.GameMerger;
@@ -45,6 +47,7 @@ public final class App {
     }
 
     public static void main(String[] args) {
+        String mode = System.getProperty("app.mode", "smoke");
         AppProperties props = AppProperties.fromClasspath();
 
         int cheapsharkTimeout = props.cheapsharkTimeoutSeconds();
@@ -87,11 +90,47 @@ public final class App {
 
         GameAggregationService service = new GameAggregationService(client, mapper, stores, clock);
 
+        if ("bootstrap".equals(mode)) {
+            runBootstrap(firebaseClient, new FirebaseMapper());
+            System.out.println("[bootstrap] end");
+            return;
+        }
+
         for (HardcodedGame game : GameFixtures.all()) {
             runCombinedAggregation(service, rawgService, validator, merger, game);
         }
 
         System.out.println("[smoke] end");
+    }
+
+    private static void runBootstrap(FirebaseClient firebaseClient, FirebaseMapper firebaseMapper) {
+        if (firebaseClient == null) {
+            System.out.println("[bootstrap] ABORT: firebase client not ready");
+            return;
+        }
+        System.out.println("[bootstrap] seeding " + GameFixtures.all().size() + " game(s) into Firestore");
+        int created = 0;
+        int skipped = 0;
+        int failed = 0;
+        for (HardcodedGame game : GameFixtures.all()) {
+            String slug = FirebaseMapper.toSlug(game.name());
+            GameDocumentDto doc = firebaseMapper.toBootstrapDocument(game.name(), slug);
+            try {
+                boolean wasCreated = firebaseClient.createIfNotExists(slug, doc);
+                if (wasCreated) {
+                    System.out.println("  [bootstrap] created slug=" + slug + " title=\"" + game.name() + "\"");
+                    created++;
+                } else {
+                    System.out.println("  [bootstrap] skipped slug=" + slug + " (already exists)");
+                    skipped++;
+                }
+            } catch (Exception e) {
+                System.out.println("  [bootstrap] FAILED slug=" + slug + " error="
+                        + e.getClass().getSimpleName() + ": " + e.getMessage());
+                failed++;
+            }
+        }
+        System.out.println("[bootstrap] done created=" + created + " skipped=" + skipped + " failed=" + failed);
     }
 
     private static List<CheapSharkStoreDto> loadStoresOrAbort(CheapSharkClient client) {

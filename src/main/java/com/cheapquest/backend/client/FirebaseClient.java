@@ -95,9 +95,10 @@ public final class FirebaseClient {
             throw new FirebaseUnavailableException("interrupted creating " + slug, e);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
-            if (cause instanceof com.google.cloud.firestore.FirestoreException fe
-                    && fe.getStatus() != null
-                    && fe.getStatus().getCode() == io.grpc.Status.Code.ALREADY_EXISTS) {
+            log.debug("createIfNotExists {} cause={}: {}", slug,
+                    cause == null ? "null" : cause.getClass().getName(),
+                    cause == null ? "(no cause)" : cause.getMessage());
+            if (isAlreadyExists(cause)) {
                 return false;
             }
             throw new FirebaseUnavailableException("failed creating " + slug, cause);
@@ -122,5 +123,22 @@ public final class FirebaseClient {
         } catch (RuntimeException e) {
             throw new FirebaseUnavailableException("failed updating " + slug, e);
         }
+    }
+
+    private static boolean isAlreadyExists(Throwable t) {
+        if (t == null) {
+            return false;
+        }
+        if (t instanceof com.google.cloud.firestore.FirestoreException fe) {
+            return fe.getStatus() != null
+                    && fe.getStatus().getCode() == io.grpc.Status.Code.ALREADY_EXISTS;
+        }
+        if (t instanceof com.google.api.gax.rpc.ApiException api
+                && api.getStatusCode() != null
+                && api.getStatusCode().getCode() != null) {
+            return api.getStatusCode().getCode()
+                    == com.google.api.gax.rpc.StatusCode.Code.ALREADY_EXISTS;
+        }
+        return false;
     }
 }

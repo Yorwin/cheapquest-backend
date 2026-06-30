@@ -11,6 +11,7 @@ import com.cheapquest.backend.domain.AggregatedGame;
 import com.cheapquest.backend.domain.GameDeals;
 import com.cheapquest.backend.domain.Offer;
 import com.cheapquest.backend.domain.rawg.RawgDetails;
+import com.cheapquest.backend.domain.validation.ValidationReport;
 import com.cheapquest.backend.dto.cheapshark.CheapSharkStoreDto;
 import com.cheapquest.backend.exception.GameNotFoundException;
 import com.cheapquest.backend.fixtures.GameFixtures;
@@ -19,6 +20,7 @@ import com.cheapquest.backend.mapper.CheapSharkMapper;
 import com.cheapquest.backend.mapper.RawgMapper;
 import com.cheapquest.backend.service.GameAggregationService;
 import com.cheapquest.backend.service.RawgAggregationService;
+import com.cheapquest.backend.service.ValidationService;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import java.net.http.HttpClient;
@@ -52,6 +54,7 @@ public final class App {
         RawgClient rawgClient = new RawgClient(rawgFetcher, gson, props.rawgBaseUrl(), props.rawgApiKey());
         RawgMapper rawgMapper = new RawgMapper();
         RawgAggregationService rawgService = new RawgAggregationService(rawgClient, rawgMapper);
+        ValidationService validator = new ValidationService();
 
         System.out.println("[smoke] cheapshark.baseUrl=" + props.cheapsharkBaseUrl());
         System.out.println("[smoke] rawg.baseUrl=" + props.rawgBaseUrl());
@@ -70,7 +73,7 @@ public final class App {
 
         for (HardcodedGame game : GameFixtures.all()) {
             runOneGame(service, game);
-            runOneRawgGame(rawgService, game);
+            runOneRawgGame(rawgService, validator, game);
         }
 
         System.out.println("[smoke] end");
@@ -97,11 +100,14 @@ public final class App {
         }
     }
 
-    private static void runOneRawgGame(RawgAggregationService service, HardcodedGame game) {
+    private static void runOneRawgGame(RawgAggregationService service, ValidationService validator,
+            HardcodedGame game) {
         System.out.println("--- " + game.name() + " (RAWG) ---");
         try {
             AggregatedGame agg = service.aggregate(game.name());
             printRawg(agg);
+            ValidationReport report = validator.evaluate(agg);
+            printValidation(report);
         } catch (GameNotFoundException e) {
             System.out.println("  " + e.getMessage());
         } catch (Exception e) {
@@ -162,5 +168,12 @@ public final class App {
 
     private static long countActive(List<CheapSharkStoreDto> stores) {
         return stores.stream().filter(s -> s.isActive() == 1).count();
+    }
+
+    private static void printValidation(ValidationReport report) {
+        System.out.println("  [validation] status=%s missing=%s lastFullFetch=%s".formatted(
+                report.status(),
+                report.missingFields(),
+                report.lastFullFetchAt()));
     }
 }

@@ -95,7 +95,7 @@ class GameMergerTest {
                 1, new Offer("1", "Steam", null,
                         new BigDecimal("1.99"), new BigDecimal("9.99"),
                         new BigDecimal("80.080"), "https://example.com/deal"),
-                List.of());
+                List.of(), T);
 
         AggregatedGame merged = merger.merge(deals, null);
 
@@ -116,6 +116,6 @@ class GameMergerTest {
                 new Offer("1", "Steam", null,
                         new BigDecimal("1.99"), new BigDecimal("9.99"),
                         new BigDecimal("80.080"), "https://example.com/deal"),
-                List.of());
+                List.of(), T);
     }
 }

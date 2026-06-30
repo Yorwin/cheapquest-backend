@@ -8,22 +8,35 @@ import com.cheapquest.backend.dto.cheapshark.CheapSharkStoreDto;
 import com.cheapquest.backend.exception.GameNotFoundException;
 import com.cheapquest.backend.mapper.CheapSharkMapper;
 import com.cheapquest.backend.mapper.StoreInfo;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 public final class GameAggregationService {
 
     private final CheapSharkClient client;
     private final CheapSharkMapper mapper;
     private final Map<String, StoreInfo> storeInfo;
+    private final Clock clock;
 
     public GameAggregationService(
             CheapSharkClient client,
             CheapSharkMapper mapper,
             List<CheapSharkStoreDto> stores) {
+        this(client, mapper, stores, Clock.systemUTC());
+    }
+
+    public GameAggregationService(
+            CheapSharkClient client,
+            CheapSharkMapper mapper,
+            List<CheapSharkStoreDto> stores,
+            Clock clock) {
         this.client = client;
         this.mapper = mapper;
         this.storeInfo = mapper.toStoreIdToInfo(stores);
+        this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     public GameDeals aggregateByName(String name) {
@@ -36,6 +49,6 @@ public final class GameAggregationService {
                 .orElseThrow(() -> new GameNotFoundException(
                         "no detail for gameId=" + match.gameId()));
 
-        return mapper.toGameDeals(match, detail, storeInfo, name);
+        return mapper.toGameDeals(match, detail, storeInfo, name, Instant.now(clock));
     }
 }

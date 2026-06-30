@@ -18,11 +18,15 @@ import com.cheapquest.backend.dto.rawg.RawgPublisherDto;
 import com.cheapquest.backend.dto.rawg.RawgScreenshotDto;
 import com.cheapquest.backend.dto.rawg.RawgTagDto;
 import com.cheapquest.backend.fixtures.RawgDtoFixtures;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class RawgMapperTest {
+
+    private static final Instant T = Instant.parse("2026-06-30T10:00:00Z");
+
 
     private final RawgMapper mapper = new RawgMapper();
 
@@ -331,7 +335,7 @@ class RawgMapperTest {
         var creator = new RawgCreatorDto(1, "Gabe Newell", "gabe-newell", null, null, "Founder", 1);
 
         RawgDetails out = mapper.toDetails(detail, List.of(),
-                List.of(), List.of(addition), List.of(creator));
+                List.of(), List.of(addition), List.of(creator), T);
 
         assertThat(out.slug()).isEqualTo("portal");
         assertThat(out.name()).isEqualTo("Portal");
@@ -360,7 +364,7 @@ class RawgMapperTest {
     void toDetails_throwsOnNullDetail() {
         org.junit.jupiter.api.Assertions.assertThrows(
                 NullPointerException.class,
-                () -> mapper.toDetails(null, List.of(), List.of(), List.of(), List.of()));
+                () -> mapper.toDetails(null, List.of(), List.of(), List.of(), List.of(), T));
     }
 
     @Test

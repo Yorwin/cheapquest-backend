@@ -13,6 +13,9 @@ import com.cheapquest.backend.dto.cheapshark.CheapSharkGameSummaryDto;
 import com.cheapquest.backend.dto.cheapshark.CheapSharkStoreDto;
 import com.cheapquest.backend.exception.GameNotFoundException;
 import com.cheapquest.backend.mapper.CheapSharkMapper;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -82,5 +85,30 @@ class GameAggregationServiceTest {
         assertThatThrownBy(() -> service.aggregateByName("Portal"))
                 .isInstanceOf(com.cheapquest.backend.exception.ApiUnavailableException.class)
                 .hasMessageContaining("HTTP 503");
+    }
+
+    @Test
+    void aggregateByName_setsFetchedAtFromInjectedClock() {
+        Clock fixedClock = Clock.fixed(Instant.parse("2026-06-30T10:00:00Z"), ZoneOffset.UTC);
+        GameAggregationService fixedService = new GameAggregationService(
+                client, mapper, List.of(new CheapSharkStoreDto("Steam", 1, null, "1")), fixedClock);
+
+        var summary = new CheapSharkGameSummaryDto(
+                "82", "400", "1.99", "d1", "Portal", "PORTAL", "thumb");
+        var detail = new CheapSharkGameDetailDto(null, null, List.of());
+        when(client.findByTitle("Portal")).thenReturn(List.of(summary));
+        when(client.getDetails("82")).thenReturn(Optional.of(detail));
+
+        GameDeals result = fixedService.aggregateByName("Portal");
+
+        assertThat(result.fetchedAt()).isEqualTo(Instant.parse("2026-06-30T10:00:00Z"));
+    }
+
+    @Test
+    void constructor_rejectsNullClock() {
+        assertThatThrownBy(() -> new GameAggregationService(
+                client, mapper, List.of(), null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessageContaining("clock");
     }
 }

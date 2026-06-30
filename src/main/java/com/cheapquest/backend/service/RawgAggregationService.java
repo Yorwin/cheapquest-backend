@@ -79,7 +79,8 @@ public final class RawgAggregationService {
 
         List<RawgScreenshotDto> screenshots = resolveScreenshots(detail);
 
-        RawgDetails rawg = mapper.toDetails(detail, movies, screenshots, additions, creators);
+        RawgDetails rawg = mapper.toDetails(detail, movies, screenshots, additions, creators,
+                Instant.now(clock));
 
         log.debug("rawg_aggregate_done name=\"{}\" durationMs={} additions={} creators={} movies={} screenshots={}",
                 name, Duration.between(start, Instant.now(clock)).toMillis(),

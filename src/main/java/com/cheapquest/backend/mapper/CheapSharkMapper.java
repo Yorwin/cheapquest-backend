@@ -11,6 +11,7 @@ import java.math.BigDecimal;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -88,7 +89,8 @@ public final class CheapSharkMapper {
             CheapSharkGameSummaryDto summary,
             CheapSharkGameDetailDto detail,
             Map<String, StoreInfo> storeIdToInfo,
-            String searchTitle) {
+            String searchTitle,
+            Instant fetchedAt) {
 
         CheapSharkGameInfoDto info = detail.info();
         String title = info != null ? info.title() : summary.external();
@@ -111,7 +113,8 @@ public final class CheapSharkMapper {
                 cheapestEver,
                 all.size(),
                 best,
-                remaining);
+                remaining,
+                fetchedAt);
     }
 
     private static String normalize(String s) {

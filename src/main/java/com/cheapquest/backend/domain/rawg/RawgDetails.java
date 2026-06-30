@@ -1,5 +1,6 @@
 package com.cheapquest.backend.domain.rawg;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 
@@ -28,7 +29,8 @@ public record RawgDetails(
         List<RawgPlatform> parentPlatforms,
         List<RawgDlc> dlcs,
         List<RawgCreator> creators,
-        List<String> screenshots) {
+        List<String> screenshots,
+        Instant fetchedAt) {
 
     public RawgDetails {
         developers = developers == null ? List.of() : List.copyOf(developers);
@@ -42,5 +44,6 @@ public record RawgDetails(
         screenshots = screenshots == null ? List.of() : List.copyOf(screenshots);
         Objects.requireNonNull(slug, "slug");
         Objects.requireNonNull(name, "name");
+        Objects.requireNonNull(fetchedAt, "fetchedAt");
     }
 }

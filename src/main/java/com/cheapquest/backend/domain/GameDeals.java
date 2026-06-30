@@ -1,7 +1,9 @@
 package com.cheapquest.backend.domain;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 
 public record GameDeals(
         String gameId,
@@ -12,5 +14,10 @@ public record GameDeals(
         BigDecimal cheapestEver,
         int offerCount,
         Offer bestDeal,
-        List<Offer> offers) {
+        List<Offer> offers,
+        Instant fetchedAt) {
+
+    public GameDeals {
+        Objects.requireNonNull(fetchedAt, "fetchedAt");
+    }
 }

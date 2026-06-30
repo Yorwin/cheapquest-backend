@@ -176,7 +176,8 @@ public final class RawgMapper {
             List<RawgMovieDto> movies,
             List<RawgScreenshotDto> screenshots,
             List<RawgGameDto> additions,
-            List<RawgCreatorDto> creators) {
+            List<RawgCreatorDto> creators,
+            java.time.Instant fetchedAt) {
 
         Objects.requireNonNull(detail, "detail");
         return new RawgDetails(
@@ -204,7 +205,8 @@ public final class RawgMapper {
                 toPlatforms(detail.parentPlatforms()),
                 toDlcSummaries(additions),
                 toCreators(creators),
-                toScreenshotUrls(screenshots));
+                toScreenshotUrls(screenshots),
+                fetchedAt);
     }
 
     static String normalize(String s) {

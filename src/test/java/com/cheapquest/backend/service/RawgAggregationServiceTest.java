@@ -55,13 +55,14 @@ class RawgAggregationServiceTest {
                 "desc", "desc", "https://x.jpg", null, null,
                 3.9, 4, 89, 0, 0, 0, 0,
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(),
+                Instant.parse("2026-01-01T00:00:00Z"));
 
         when(client.searchByName("Far Cry", 10)).thenReturn(List.of(farCry));
         when(mapper.pickExactMatch(List.of(farCry), "Far Cry")).thenReturn(Optional.of(farCry));
         lenient().when(mapper.pickClosestByLevenshtein(List.of(farCry), "Far Cry")).thenReturn(Optional.empty());
         when(client.getDetails("far-cry")).thenReturn(Optional.of(detail));
-        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList(), any())).thenReturn(rawg);
 
         AggregatedGame result = service.aggregate("Far Cry");
 
@@ -74,6 +75,25 @@ class RawgAggregationServiceTest {
     }
 
     @Test
+    void aggregate_threadsFixedClockInstantIntoRawgDetails() {
+        var farCry = RawgDtoFixtures.minimalGame("far-cry", "Far Cry");
+        var detail = RawgDtoFixtures.detailWithCounts("far-cry", "Far Cry", 0, 0, 0, 0);
+        var rawg = stubDetails("far-cry", "Far Cry");
+
+        when(client.searchByName("Far Cry", 10)).thenReturn(List.of(farCry));
+        when(mapper.pickExactMatch(List.of(farCry), "Far Cry")).thenReturn(Optional.of(farCry));
+        lenient().when(mapper.pickClosestByLevenshtein(List.of(farCry), "Far Cry")).thenReturn(Optional.empty());
+        when(client.getDetails("far-cry")).thenReturn(Optional.of(detail));
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList(),
+                eq(Instant.parse("2026-01-01T00:00:00Z")))).thenReturn(rawg);
+
+        service.aggregate("Far Cry");
+
+        verify(mapper).toDetails(eq(detail), anyList(), anyList(), anyList(), anyList(),
+                eq(Instant.parse("2026-01-01T00:00:00Z")));
+    }
+
+    @Test
     void aggregate_fallsBackToLevenshteinWhenNoExactMatch() {
         var farCry = RawgDtoFixtures.minimalGame("far-cry", "Far Cry");
         var detail = RawgDtoFixtures.detailWithCounts("far-cry", "Far Cry", 0, 0, 0, 0);
@@ -83,7 +103,7 @@ class RawgAggregationServiceTest {
         when(mapper.pickExactMatch(List.of(farCry), "Farcry")).thenReturn(Optional.empty());
         when(mapper.pickClosestByLevenshtein(List.of(farCry), "Farcry")).thenReturn(Optional.of(farCry));
         when(client.getDetails("far-cry")).thenReturn(Optional.of(detail));
-        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList(), any())).thenReturn(rawg);
 
         AggregatedGame result = service.aggregate("Farcry");
 
@@ -130,7 +150,7 @@ class RawgAggregationServiceTest {
         lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
         when(client.getDetails("portal")).thenReturn(Optional.of(detail));
         when(client.getAdditions("portal")).thenReturn(List.of(rtx));
-        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList(), any())).thenReturn(rawg);
 
         service.aggregate("Portal");
 
@@ -147,7 +167,7 @@ class RawgAggregationServiceTest {
         when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
         lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
         when(client.getDetails("portal")).thenReturn(Optional.of(detail));
-        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList(), any())).thenReturn(rawg);
 
         service.aggregate("Portal");
 
@@ -166,7 +186,7 @@ class RawgAggregationServiceTest {
         when(client.getDetails("portal")).thenReturn(Optional.of(detail));
         when(client.getDevelopmentTeam("portal")).thenReturn(
                 List.of(new RawgCreatorDto(1, "Gabe", "gabe", null, null, "Founder", 1)));
-        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList(), any())).thenReturn(rawg);
 
         service.aggregate("Portal");
 
@@ -183,7 +203,7 @@ class RawgAggregationServiceTest {
         when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
         lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
         when(client.getDetails("portal")).thenReturn(Optional.of(detail));
-        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList(), any())).thenReturn(rawg);
 
         service.aggregate("Portal");
 
@@ -201,7 +221,7 @@ class RawgAggregationServiceTest {
         lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
         when(client.getDetails("portal")).thenReturn(Optional.of(detail));
         when(client.getMovies("portal")).thenReturn(List.of());
-        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList(), any())).thenReturn(rawg);
 
         service.aggregate("Portal");
 
@@ -218,13 +238,13 @@ class RawgAggregationServiceTest {
         when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
         lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
         when(client.getDetails("portal")).thenReturn(Optional.of(detail));
-        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList(), any())).thenReturn(rawg);
 
         AggregatedGame result = service.aggregate("Portal");
 
         assertThat(result).isNotNull();
         assertThat(result.rawg()).isSameAs(rawg);
-        verify(mapper).toDetails(eq(detail), anyList(), anyList(), anyList(), anyList());
+        verify(mapper).toDetails(eq(detail), anyList(), anyList(), anyList(), anyList(), any());
     }
 
     @Test
@@ -256,7 +276,7 @@ class RawgAggregationServiceTest {
         when(client.getDetails("portal")).thenReturn(Optional.of(detail));
         when(client.getAdditions("portal"))
                 .thenThrow(new ApiUnavailableException("HTTP 404 on /additions", 404, "none"));
-        lenient().when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+        lenient().when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList(), any())).thenReturn(rawg);
 
         AggregatedGame result = service.aggregate("Portal");
 
@@ -275,7 +295,7 @@ class RawgAggregationServiceTest {
         lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
         when(client.getDetails("portal")).thenReturn(Optional.of(detail));
         when(client.getAdditions("portal")).thenThrow(new IllegalStateException("oops"));
-        lenient().when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+        lenient().when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList(), any())).thenReturn(rawg);
 
         AggregatedGame result = service.aggregate("Portal");
 
@@ -301,7 +321,7 @@ class RawgAggregationServiceTest {
         lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
         when(client.getDetails("portal")).thenReturn(Optional.of(detail));
         when(client.getScreenshots("portal")).thenReturn(List.of());
-        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList(), any())).thenReturn(rawg);
 
         service.aggregate("Portal");
 
@@ -328,7 +348,7 @@ class RawgAggregationServiceTest {
         when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
         lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
         when(client.getDetails("portal")).thenReturn(Optional.of(detail));
-        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList(), any())).thenReturn(rawg);
 
         service.aggregate("Portal");
 
@@ -345,7 +365,7 @@ class RawgAggregationServiceTest {
         when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
         lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
         when(client.getDetails("portal")).thenReturn(Optional.of(detail));
-        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList(), any())).thenReturn(rawg);
 
         service.aggregate("Portal", 25);
 
@@ -372,7 +392,7 @@ class RawgAggregationServiceTest {
         when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
         lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
         when(client.getDetails("portal")).thenReturn(Optional.of(detail));
-        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList(), any())).thenReturn(rawg);
 
         service.aggregate("Portal");
 
@@ -399,7 +419,7 @@ class RawgAggregationServiceTest {
         lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
         when(client.getDetails("portal")).thenReturn(Optional.of(detail));
         when(client.getScreenshots("portal")).thenReturn(List.of());
-        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList(), any())).thenReturn(rawg);
 
         service.aggregate("Portal");
 
@@ -412,6 +432,8 @@ class RawgAggregationServiceTest {
                 null, null, null, null, null,
                 null, null, null, 0, 0, 0, 0,
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-                List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(),
+                Instant.parse("2026-01-01T00:00:00Z"));
     }
 }
+

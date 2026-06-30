@@ -233,11 +233,12 @@ class ValidationServiceTest {
                 new Offer("1", "Steam", null,
                         new BigDecimal("1.99"), new BigDecimal("9.99"),
                         new BigDecimal("80.080"), "https://example.com/deal"),
-                List.of());
+                List.of(),
+                T);
     }
 
     private static GameDeals emptyDeals() {
         return new GameDeals("82", "Portal", "Portal", "PORTAL",
-                "https://example.com/thumb.jpg", null, 0, null, List.of());
+                "https://example.com/thumb.jpg", null, 0, null, List.of(), T);
     }
 }

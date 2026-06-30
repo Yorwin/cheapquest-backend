@@ -12,12 +12,15 @@ import com.cheapquest.backend.dto.cheapshark.CheapSharkGameSummaryDto;
 import com.cheapquest.backend.dto.cheapshark.CheapSharkStoreDto;
 import com.cheapquest.backend.dto.cheapshark.CheapSharkStoreImagesDto;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class CheapSharkMapperTest {
+
+    private static final Instant T = Instant.parse("2026-06-30T10:00:00Z");
 
     private final CheapSharkMapper mapper = new CheapSharkMapper();
 
@@ -132,7 +135,7 @@ class CheapSharkMapperTest {
                         new CheapSharkDealDto("1", "dealSteam", "1.99", "9.99", "80.080080"),
                         new CheapSharkDealDto("7", "dealGog",   "2.50", "9.99", "74.977498")));
 
-        GameDeals gd = mapper.toGameDeals(summary, detail, info, "Portal");
+        GameDeals gd = mapper.toGameDeals(summary, detail, info, "Portal", T);
 
         assertThat(gd.gameId()).isEqualTo("82");
         assertThat(gd.searchTitle()).isEqualTo("Portal");
@@ -147,6 +150,7 @@ class CheapSharkMapperTest {
         assertThat(gd.offers()).hasSize(1);
         assertThat(gd.offers().get(0).storeId()).isEqualTo("7");
         assertThat(gd.offers()).doesNotContain(gd.bestDeal());
+        assertThat(gd.fetchedAt()).isEqualTo(T);
     }
 
     @Test
@@ -159,7 +163,7 @@ class CheapSharkMapperTest {
                 null,
                 List.of());
 
-        GameDeals gd = mapper.toGameDeals(summary, detail, info, " portal ");
+        GameDeals gd = mapper.toGameDeals(summary, detail, info, " portal ", T);
 
         assertThat(gd.searchTitle()).isEqualTo(" portal ");
         assertThat(gd.name()).isEqualTo("Portal");
@@ -175,7 +179,7 @@ class CheapSharkMapperTest {
                 new CheapSharkCheapestPriceDto("0.99", 0L),
                 List.of(new CheapSharkDealDto("1", "sameDeal", "1.99", "9.99", "80.000000")));
 
-        GameDeals gd = mapper.toGameDeals(summary, detail, info, "Portal");
+        GameDeals gd = mapper.toGameDeals(summary, detail, info, "Portal", T);
 
         assertThat(gd.offerCount()).isEqualTo(1);
         assertThat(gd.bestDeal()).isNotNull();
@@ -192,7 +196,7 @@ class CheapSharkMapperTest {
                 null,
                 List.of());
 
-        GameDeals gd = mapper.toGameDeals(summary, detail, info, "Portal");
+        GameDeals gd = mapper.toGameDeals(summary, detail, info, "Portal", T);
 
         assertThat(gd.offerCount()).isZero();
         assertThat(gd.bestDeal()).isNull();

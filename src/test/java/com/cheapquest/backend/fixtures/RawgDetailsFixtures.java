@@ -40,6 +40,7 @@ public final class RawgDetailsFixtures {
         private List<RawgGenre> genres = List.of(new RawgGenre(1, "Action", "action"));
         private List<RawgTag> tags = List.of(new RawgTag(1, "FPS", "fps", "eng"));
         private List<String> screenshots = List.of("https://example.com/shot1.jpg");
+        private java.time.Instant fetchedAt = java.time.Instant.parse("2026-06-30T00:00:00Z");
 
         DetailsBuilder(String slug, String name) {
             this.slug = slug;
@@ -57,12 +58,14 @@ public final class RawgDetailsFixtures {
         public DetailsBuilder genres(List<RawgGenre> v) { this.genres = v; return this; }
         public DetailsBuilder tags(List<RawgTag> v) { this.tags = v; return this; }
         public DetailsBuilder screenshots(List<String> v) { this.screenshots = v; return this; }
+        public DetailsBuilder fetchedAt(java.time.Instant v) { this.fetchedAt = v; return this; }
 
         public RawgDetails build() {
             return new RawgDetails(
                     slug, name, nameOriginal, released, description, descriptionRaw,
                     headerImage, trailerUrl, null, null, null, null, 0, 0, 0, 0,
-                    developers, publishers, genres, tags, null, null, null, null, screenshots);
+                    developers, publishers, genres, tags, null, null, null, null, screenshots,
+                    fetchedAt);
         }
     }
 }

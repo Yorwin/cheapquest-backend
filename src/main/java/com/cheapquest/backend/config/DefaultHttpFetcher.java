@@ -53,10 +53,10 @@ public final class DefaultHttpFetcher implements HttpFetcher {
                 lastBody = body;
                 if (!isRetryable(status) || attempt >= maxAttempts) {
                     throw new ApiUnavailableException(
-                            "HTTP " + status + " on " + url, status, truncate(body, BODY_TRUNCATE));
+                            "HTTP " + status + " on " + maskSecretQueryParam(url), status, truncate(body, BODY_TRUNCATE));
                 }
                 long delay = computeDelay(attempt);
-                log.warn("http_backoff url={} attempt={} status={} delayMs={}", url, attempt, status, delay);
+                log.warn("http_backoff url={} attempt={} status={} delayMs={}", maskSecretQueryParam(url), attempt, status, delay);
                 sleep(delay);
             } catch (ApiUnavailableException e) {
                 throw e;
@@ -70,13 +70,20 @@ public final class DefaultHttpFetcher implements HttpFetcher {
                 }
                 long delay = computeDelay(attempt);
                 log.warn("http_backoff url={} attempt={} error={} delayMs={}",
-                        url, attempt, e.getClass().getSimpleName(), delay);
+                        maskSecretQueryParam(url), attempt, e.getClass().getSimpleName(), delay);
                 sleep(delay);
             }
         }
         throw new ApiUnavailableException(
-                "Exhausted " + maxAttempts + " attempts for " + url,
+                "Exhausted " + maxAttempts + " attempts for " + maskSecretQueryParam(url),
                 lastStatus, truncate(lastBody, BODY_TRUNCATE));
+    }
+
+    static String maskSecretQueryParam(String url) {
+        if (url == null) {
+            return null;
+        }
+        return url.replaceAll("([?&])key=[^&]*", "$1key=***");
     }
 
     private static boolean isRetryable(int status) {

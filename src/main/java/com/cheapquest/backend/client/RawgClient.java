@@ -7,11 +7,10 @@ import com.cheapquest.backend.dto.rawg.RawgListResponseDto;
 import com.cheapquest.backend.dto.rawg.RawgMovieDto;
 import com.cheapquest.backend.dto.rawg.RawgScreenshotDto;
 import com.cheapquest.backend.exception.ApiUnavailableException;
+import com.cheapquest.backend.util.Urls;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import java.lang.reflect.Type;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -31,12 +30,15 @@ public final class RawgClient {
     private final Gson gson;
     private final String baseUrl;
     private final String apiKey;
+    private final String keyParam;
+    private final java.util.Map<Class<?>, Type> listTypeCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     public RawgClient(HttpFetcher fetcher, Gson gson, String baseUrl, String apiKey) {
         this.fetcher = fetcher;
         this.gson = gson;
         this.baseUrl = baseUrl;
         this.apiKey = apiKey;
+        this.keyParam = Urls.buildKeyParam(apiKey);
     }
 
     public List<RawgGameDto> searchByName(String name, int pageSize) {
@@ -44,9 +46,9 @@ public final class RawgClient {
             return List.of();
         }
         String url = baseUrl + SEARCH_PATH
-                + "?search=" + encode(name)
+                + "?search=" + Urls.encode(name)
                 + "&page_size=" + pageSize
-                + "&key=" + encode(apiKey);
+                + "&" + keyParam;
         log.debug("rawg_search_by_name name={} pageSize={}", name, pageSize);
         return getList(url, RawgGameDto.class);
     }
@@ -77,11 +79,11 @@ public final class RawgClient {
     }
 
     private String buildDetailsUrl(String slugOrId) {
-        return baseUrl + DETAILS_PATH_PREFIX + encode(slugOrId) + "?key=" + encode(apiKey);
+        return baseUrl + DETAILS_PATH_PREFIX + Urls.encode(slugOrId) + "?" + keyParam;
     }
 
     private String buildSubUrl(String slugOrId, String suffix) {
-        return baseUrl + DETAILS_PATH_PREFIX + encode(slugOrId) + suffix + "?key=" + encode(apiKey);
+        return baseUrl + DETAILS_PATH_PREFIX + Urls.encode(slugOrId) + suffix + "?" + keyParam;
     }
 
     private <T> List<T> getSubList(String slugOrId, String suffix, Class<T> elementType, String label) {
@@ -109,7 +111,7 @@ public final class RawgClient {
     private <T> List<T> getList(String url, Class<T> elementType) {
         try {
             String body = fetcher.get(url);
-            Type listType = TypeToken.getParameterized(RawgListResponseDto.class, elementType).getType();
+            Type listType = listTypeFor(elementType);
             RawgListResponseDto<T> response = gson.fromJson(body, listType);
             if (response == null || response.results() == null) {
                 return List.of();
@@ -126,6 +128,11 @@ public final class RawgClient {
         }
     }
 
+    private Type listTypeFor(Class<?> elementType) {
+        return listTypeCache.computeIfAbsent(elementType,
+                et -> TypeToken.getParameterized(RawgListResponseDto.class, et).getType());
+    }
+
     private <T> T parseOrThrow(String body, Class<T> type, String url) {
         try {
             return gson.fromJson(body, type);
@@ -133,9 +140,5 @@ public final class RawgClient {
             throw new ApiUnavailableException(
                     "Failed to parse response from " + url + ": " + e.getMessage(), e);
         }
-    }
-
-    private static String encode(String s) {
-        return URLEncoder.encode(s, StandardCharsets.UTF_8);
     }
 }

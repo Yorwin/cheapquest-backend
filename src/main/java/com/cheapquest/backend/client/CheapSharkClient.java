@@ -5,11 +5,10 @@ import com.cheapquest.backend.dto.cheapshark.CheapSharkGameDetailDto;
 import com.cheapquest.backend.dto.cheapshark.CheapSharkGameSummaryDto;
 import com.cheapquest.backend.dto.cheapshark.CheapSharkStoreDto;
 import com.cheapquest.backend.exception.ApiUnavailableException;
+import com.cheapquest.backend.util.Urls;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import java.lang.reflect.Type;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -45,7 +44,7 @@ public final class CheapSharkClient {
         if (title == null || title.isBlank()) {
             return List.of();
         }
-        String encoded = URLEncoder.encode(title, StandardCharsets.UTF_8);
+        String encoded = Urls.encode(title);
         String url = baseUrl + "/games?title=" + encoded;
         log.debug("cheapshark_find_by_title title={} url={}", title, url);
         String body = fetcher.get(url);
@@ -60,7 +59,7 @@ public final class CheapSharkClient {
         if (gameId == null || gameId.isBlank()) {
             return Optional.empty();
         }
-        String url = baseUrl + "/games?id=" + URLEncoder.encode(gameId, StandardCharsets.UTF_8);
+        String url = baseUrl + "/games?id=" + Urls.encode(gameId);
         log.debug("cheapshark_get_details gameId={} url={}", gameId, url);
         String body = fetcher.get(url);
         try {

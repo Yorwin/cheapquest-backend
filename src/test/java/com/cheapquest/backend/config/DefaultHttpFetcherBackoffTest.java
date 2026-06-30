@@ -83,4 +83,45 @@ class DefaultHttpFetcherBackoffTest {
         assertThatThrownBy(() -> new DefaultHttpFetcher(http, 5, 0, 1L))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void maskSecretQueryParam_masksKeyInQueryString() {
+        assertThat(DefaultHttpFetcher.maskSecretQueryParam(
+                "https://api.rawg.io/api/games?search=Portal&page_size=10&key=cc387cdcb05e4f4aa9f6592bea63c0ab"))
+                .isEqualTo("https://api.rawg.io/api/games?search=Portal&page_size=10&key=***");
+    }
+
+    @Test
+    void maskSecretQueryParam_masksKeyAtStartOfQueryString() {
+        assertThat(DefaultHttpFetcher.maskSecretQueryParam(
+                "https://api.example.com/games?key=secret&other=val"))
+                .isEqualTo("https://api.example.com/games?key=***&other=val");
+    }
+
+    @Test
+    void maskSecretQueryParam_handlesUrlWithNoKey() {
+        assertThat(DefaultHttpFetcher.maskSecretQueryParam("https://api.example.com/games?title=Portal"))
+                .isEqualTo("https://api.example.com/games?title=Portal");
+    }
+
+    @Test
+    void maskSecretQueryParam_handlesNull() {
+        assertThat(DefaultHttpFetcher.maskSecretQueryParam(null)).isNull();
+    }
+
+    @Test
+    void does_not_leak_api_key_in_error_message() throws Exception {
+        HttpClient http = mock(HttpClient.class);
+        HttpResponse<String> r500 = mock(HttpResponse.class);
+        when(r500.statusCode()).thenReturn(500);
+        when(r500.body()).thenReturn("boom");
+        doReturn(r500).when(http).send(any(HttpRequest.class), any());
+
+        DefaultHttpFetcher fetcher = new DefaultHttpFetcher(http, 5, 1, 1L);
+
+        assertThatThrownBy(() -> fetcher.get("https://api.rawg.io/api/games?key=cc387cdcb05e4f4aa9f6592bea63c0ab"))
+                .isInstanceOf(ApiUnavailableException.class)
+                .hasMessageContaining("key=***")
+                .hasMessageNotContaining("cc387cdcb05e4f4aa9f6592bea63c0ab");
+    }
 }

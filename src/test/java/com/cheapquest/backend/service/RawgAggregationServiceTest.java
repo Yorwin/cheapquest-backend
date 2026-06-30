@@ -19,7 +19,9 @@ import com.cheapquest.backend.domain.rawg.RawgDetails;
 import com.cheapquest.backend.dto.rawg.RawgCreatorDto;
 import com.cheapquest.backend.dto.rawg.RawgGameDto;
 import com.cheapquest.backend.dto.rawg.RawgScreenshotDto;
+import com.cheapquest.backend.exception.ApiUnavailableException;
 import com.cheapquest.backend.exception.GameNotFoundException;
+import com.cheapquest.backend.fixtures.RawgDtoFixtures;
 import com.cheapquest.backend.mapper.RawgMapper;
 import java.time.Clock;
 import java.time.Instant;
@@ -46,8 +48,8 @@ class RawgAggregationServiceTest {
 
     @Test
     void aggregate_returnsAggregatedGameWithRawgDetails() {
-        var farCry = game("far-cry", "Far Cry");
-        var detail = detailWithCounts("far-cry", "Far Cry", 0, 0, 0, 0);
+        var farCry = RawgDtoFixtures.minimalGame("far-cry", "Far Cry");
+        var detail = RawgDtoFixtures.detailWithCounts("far-cry", "Far Cry", 0, 0, 0, 0);
         var rawg = new RawgDetails(
                 "far-cry", "Far Cry", "Far Cry", "2004-03-22",
                 "desc", "desc", "https://x.jpg", null, null,
@@ -73,8 +75,8 @@ class RawgAggregationServiceTest {
 
     @Test
     void aggregate_fallsBackToLevenshteinWhenNoExactMatch() {
-        var farCry = game("far-cry", "Far Cry");
-        var detail = detailWithCounts("far-cry", "Far Cry", 0, 0, 0, 0);
+        var farCry = RawgDtoFixtures.minimalGame("far-cry", "Far Cry");
+        var detail = RawgDtoFixtures.detailWithCounts("far-cry", "Far Cry", 0, 0, 0, 0);
         var rawg = stubDetails("far-cry", "Far Cry");
 
         when(client.searchByName("Farcry", 10)).thenReturn(List.of(farCry));
@@ -103,7 +105,7 @@ class RawgAggregationServiceTest {
 
     @Test
     void aggregate_throwsWhenDetailEmpty() {
-        var farCry = game("far-cry", "Far Cry");
+        var farCry = RawgDtoFixtures.minimalGame("far-cry", "Far Cry");
 
         when(client.searchByName("Far Cry", 10)).thenReturn(List.of(farCry));
         when(mapper.pickExactMatch(List.of(farCry), "Far Cry")).thenReturn(Optional.of(farCry));
@@ -118,9 +120,9 @@ class RawgAggregationServiceTest {
 
     @Test
     void aggregate_callsAdditionsWhenCountGreaterThanZero() {
-        var portal = game("portal", "Portal");
-        var detail = detailWithCounts("portal", "Portal", 4, 0, 0, 0);
-        var rtx = game("portal-with-rtx", "Portal with RTX");
+        var portal = RawgDtoFixtures.minimalGame("portal", "Portal");
+        var detail = RawgDtoFixtures.detailWithCounts("portal", "Portal", 4, 0, 0, 0);
+        var rtx = RawgDtoFixtures.minimalGame("portal-with-rtx", "Portal with RTX");
         var rawg = stubDetails("portal", "Portal");
 
         when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
@@ -137,8 +139,8 @@ class RawgAggregationServiceTest {
 
     @Test
     void aggregate_skipsAdditionsWhenCountIsZero() {
-        var portal = game("portal", "Portal");
-        var detail = detailWithCounts("portal", "Portal", 0, 0, 0, 0);
+        var portal = RawgDtoFixtures.minimalGame("portal", "Portal");
+        var detail = RawgDtoFixtures.detailWithCounts("portal", "Portal", 0, 0, 0, 0);
         var rawg = stubDetails("portal", "Portal");
 
         when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
@@ -154,8 +156,8 @@ class RawgAggregationServiceTest {
 
     @Test
     void aggregate_callsCreatorsWhenCountGreaterThanZero() {
-        var portal = game("portal", "Portal");
-        var detail = detailWithCounts("portal", "Portal", 0, 30, 0, 0);
+        var portal = RawgDtoFixtures.minimalGame("portal", "Portal");
+        var detail = RawgDtoFixtures.detailWithCounts("portal", "Portal", 0, 30, 0, 0);
         var rawg = stubDetails("portal", "Portal");
 
         when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
@@ -173,8 +175,8 @@ class RawgAggregationServiceTest {
 
     @Test
     void aggregate_skipsCreatorsWhenCountIsZero() {
-        var portal = game("portal", "Portal");
-        var detail = detailWithCounts("portal", "Portal", 0, 0, 0, 0);
+        var portal = RawgDtoFixtures.minimalGame("portal", "Portal");
+        var detail = RawgDtoFixtures.detailWithCounts("portal", "Portal", 0, 0, 0, 0);
         var rawg = stubDetails("portal", "Portal");
 
         when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
@@ -190,8 +192,8 @@ class RawgAggregationServiceTest {
 
     @Test
     void aggregate_callsMoviesWhenCountGreaterThanZero() {
-        var portal = game("portal", "Portal");
-        var detail = detailWithCounts("portal", "Portal", 0, 0, 2, 0);
+        var portal = RawgDtoFixtures.minimalGame("portal", "Portal");
+        var detail = RawgDtoFixtures.detailWithCounts("portal", "Portal", 0, 0, 2, 0);
         var rawg = stubDetails("portal", "Portal");
 
         when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
@@ -207,26 +209,103 @@ class RawgAggregationServiceTest {
     }
 
     @Test
-    void aggregate_continuesWhenSubfetchThrows() {
-        var portal = game("portal", "Portal");
-        var detail = detailWithCounts("portal", "Portal", 5, 10, 2, 20);
+    void aggregate_continuesWhenSubfetchReturnsEmptyList() {
+        var portal = RawgDtoFixtures.minimalGame("portal", "Portal");
+        var detail = RawgDtoFixtures.detailWithCounts("portal", "Portal", 0, 0, 0, 0);
         var rawg = stubDetails("portal", "Portal");
 
         when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
         when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
         lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
         when(client.getDetails("portal")).thenReturn(Optional.of(detail));
-        when(client.getAdditions("portal")).thenThrow(new RuntimeException("RAWG down"));
-        when(client.getDevelopmentTeam("portal")).thenThrow(new RuntimeException("RAWG down"));
-        when(client.getMovies("portal")).thenThrow(new RuntimeException("RAWG down"));
-        when(client.getScreenshots("portal")).thenThrow(new RuntimeException("RAWG down"));
-        lenient().when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
 
         AggregatedGame result = service.aggregate("Portal");
 
         assertThat(result).isNotNull();
         assertThat(result.rawg()).isSameAs(rawg);
         verify(mapper).toDetails(eq(detail), anyList(), anyList(), anyList(), anyList());
+    }
+
+    @Test
+    void aggregate_propagatesApiUnavailableWhenSubfetchReturns5xx() {
+        var portal = RawgDtoFixtures.minimalGame("portal", "Portal");
+        var detail = RawgDtoFixtures.detailWithCounts("portal", "Portal", 5, 0, 0, 0);
+
+        when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
+        when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
+        lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
+        when(client.getDetails("portal")).thenReturn(Optional.of(detail));
+        when(client.getAdditions("portal"))
+                .thenThrow(new ApiUnavailableException("HTTP 503 on /additions", 503, "down"));
+
+        assertThatThrownBy(() -> service.aggregate("Portal"))
+                .isInstanceOf(ApiUnavailableException.class)
+                .hasMessageContaining("HTTP 503");
+    }
+
+    @Test
+    void aggregate_continuesWhenSubfetchReturns404() {
+        var portal = RawgDtoFixtures.minimalGame("portal", "Portal");
+        var detail = RawgDtoFixtures.detailWithCounts("portal", "Portal", 5, 0, 0, 0);
+        var rawg = stubDetails("portal", "Portal");
+
+        when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
+        when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
+        lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
+        when(client.getDetails("portal")).thenReturn(Optional.of(detail));
+        when(client.getAdditions("portal"))
+                .thenThrow(new ApiUnavailableException("HTTP 404 on /additions", 404, "none"));
+        lenient().when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+
+        AggregatedGame result = service.aggregate("Portal");
+
+        assertThat(result).isNotNull();
+        assertThat(result.rawg()).isSameAs(rawg);
+    }
+
+    @Test
+    void aggregate_continuesWhenNonApiSubfetchThrows() {
+        var portal = RawgDtoFixtures.minimalGame("portal", "Portal");
+        var detail = RawgDtoFixtures.detailWithCounts("portal", "Portal", 5, 0, 0, 0);
+        var rawg = stubDetails("portal", "Portal");
+
+        when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
+        when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
+        lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
+        when(client.getDetails("portal")).thenReturn(Optional.of(detail));
+        when(client.getAdditions("portal")).thenThrow(new IllegalStateException("oops"));
+        lenient().when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+
+        AggregatedGame result = service.aggregate("Portal");
+
+        assertThat(result).isNotNull();
+        assertThat(result.rawg()).isSameAs(rawg);
+    }
+
+    @Test
+    void aggregate_fetchesScreenshotsWhenShortListNull() {
+        var portal = RawgDtoFixtures.minimalGame("portal", "Portal");
+        var detail = mock(RawgGameDto.class);
+        when(detail.slug()).thenReturn("portal");
+        when(detail.name()).thenReturn("Portal");
+        when(detail.additionsCount()).thenReturn(0);
+        when(detail.creatorsCount()).thenReturn(0);
+        when(detail.moviesCount()).thenReturn(0);
+        when(detail.screenshotsCount()).thenReturn(7);
+        when(detail.shortScreenshots()).thenReturn(null);
+        var rawg = stubDetails("portal", "Portal");
+
+        when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
+        when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
+        lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
+        when(client.getDetails("portal")).thenReturn(Optional.of(detail));
+        when(client.getScreenshots("portal")).thenReturn(List.of());
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList())).thenReturn(rawg);
+
+        service.aggregate("Portal");
+
+        verify(client, times(1)).getScreenshots("portal");
     }
 
     @Test
@@ -241,8 +320,8 @@ class RawgAggregationServiceTest {
 
     @Test
     void aggregate_usesDefaultPageSize10() {
-        var portal = game("portal", "Portal");
-        var detail = detailWithCounts("portal", "Portal", 0, 0, 0, 0);
+        var portal = RawgDtoFixtures.minimalGame("portal", "Portal");
+        var detail = RawgDtoFixtures.detailWithCounts("portal", "Portal", 0, 0, 0, 0);
         var rawg = stubDetails("portal", "Portal");
 
         when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
@@ -258,8 +337,8 @@ class RawgAggregationServiceTest {
 
     @Test
     void aggregate_usesCustomPageSize() {
-        var portal = game("portal", "Portal");
-        var detail = detailWithCounts("portal", "Portal", 0, 0, 0, 0);
+        var portal = RawgDtoFixtures.minimalGame("portal", "Portal");
+        var detail = RawgDtoFixtures.detailWithCounts("portal", "Portal", 0, 0, 0, 0);
         var rawg = stubDetails("portal", "Portal");
 
         when(client.searchByName("Portal", 25)).thenReturn(List.of(portal));
@@ -275,7 +354,7 @@ class RawgAggregationServiceTest {
 
     @Test
     void aggregate_usesShortScreenshotsWhenCountMatches() {
-        var portal = game("portal", "Portal");
+        var portal = RawgDtoFixtures.minimalGame("portal", "Portal");
         var shortShots = List.of(
                 new RawgScreenshotDto(1L, "https://x/1.jpg", 0, 0, false),
                 new RawgScreenshotDto(2L, "https://x/2.jpg", 0, 0, false));
@@ -302,7 +381,7 @@ class RawgAggregationServiceTest {
 
     @Test
     void aggregate_fetchesScreenshotsWhenCountExceedsShortList() {
-        var portal = game("portal", "Portal");
+        var portal = RawgDtoFixtures.minimalGame("portal", "Portal");
         var shortShots = List.of(
                 new RawgScreenshotDto(1L, "https://x/1.jpg", 0, 0, false));
         var detail = mock(RawgGameDto.class);
@@ -325,29 +404,6 @@ class RawgAggregationServiceTest {
         service.aggregate("Portal");
 
         verify(client, times(1)).getScreenshots("portal");
-    }
-
-    private static RawgGameDto game(String slug, String name) {
-        return new RawgGameDto(
-                1, slug, name, name,
-                null, null, null, false, null,
-                null, null, null,
-                0.0, 0, null, 0, 0, 0, null, null,
-                0, 0, 0, 0, 0, 0, 0, 0,
-                0, null,
-                null, null, null, null, null, null, null, null, null, null);
-    }
-
-    private static RawgGameDto detailWithCounts(String slug, String name,
-            int additions, int creators, int movies, int screenshots) {
-        return new RawgGameDto(
-                1, slug, name, name,
-                null, null, null, false, null,
-                null, null, null,
-                0.0, 0, null, 0, 0, 0, null, null,
-                0, 0, additions, 0, screenshots, movies, creators, 0, 0,
-                null, null,
-                null, null, null, null, null, null, null, null, null);
     }
 
     private static RawgDetails stubDetails(String slug, String name) {

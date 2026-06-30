@@ -7,12 +7,15 @@ import com.cheapquest.backend.dto.rawg.RawgCreatorDto;
 import com.cheapquest.backend.dto.rawg.RawgGameDto;
 import com.cheapquest.backend.dto.rawg.RawgMovieDto;
 import com.cheapquest.backend.dto.rawg.RawgScreenshotDto;
+import com.cheapquest.backend.exception.ApiUnavailableException;
 import com.cheapquest.backend.exception.GameNotFoundException;
 import com.cheapquest.backend.mapper.RawgMapper;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,6 +46,7 @@ public final class RawgAggregationService {
         if (name == null || name.isBlank()) {
             throw new GameNotFoundException("empty name");
         }
+        Instant start = Instant.now(clock);
 
         List<RawgGameDto> searchResults = client.searchByName(name, searchPageSize);
         log.debug("rawg_search_results target=\"{}\" count={}", name, searchResults.size());
@@ -77,6 +81,10 @@ public final class RawgAggregationService {
 
         RawgDetails rawg = mapper.toDetails(detail, movies, screenshots, additions, creators);
 
+        log.debug("rawg_aggregate_done name=\"{}\" durationMs={} additions={} creators={} movies={} screenshots={}",
+                name, Duration.between(start, Instant.now(clock)).toMillis(),
+                additions.size(), creators.size(), movies.size(), screenshots.size());
+
         return new AggregatedGame(
                 name,
                 rawg.name(),
@@ -94,12 +102,18 @@ public final class RawgAggregationService {
         return Optional.ofNullable(detail.shortScreenshots()).orElseGet(List::of);
     }
 
-    private <T> List<T> safeFetch(boolean shouldFetch, java.util.function.Supplier<List<T>> call, String label) {
+    private <T> List<T> safeFetch(boolean shouldFetch, Supplier<List<T>> call, String label) {
         if (!shouldFetch) {
             return List.of();
         }
         try {
             return call.get();
+        } catch (ApiUnavailableException e) {
+            if (e.status() == 404) {
+                return List.of();
+            }
+            log.error("rawg_subfetch_failed label={} status={} - aborting aggregation", label, e.status());
+            throw e;
         } catch (RuntimeException e) {
             log.warn("rawg_subfetch_failed label={} error={}: {}",
                     label, e.getClass().getSimpleName(), e.getMessage());

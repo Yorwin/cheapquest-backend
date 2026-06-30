@@ -9,20 +9,27 @@ import com.cheapquest.backend.domain.rawg.RawgGenre;
 import com.cheapquest.backend.domain.rawg.RawgPlatform;
 import com.cheapquest.backend.domain.rawg.RawgTag;
 import com.cheapquest.backend.dto.rawg.RawgCreatorDto;
+import com.cheapquest.backend.dto.rawg.RawgDeveloperDto;
 import com.cheapquest.backend.dto.rawg.RawgGameDto;
+import com.cheapquest.backend.dto.rawg.RawgGenreDto;
 import com.cheapquest.backend.dto.rawg.RawgMovieDto;
+import com.cheapquest.backend.dto.rawg.RawgPlatformEntryDto;
+import com.cheapquest.backend.dto.rawg.RawgPublisherDto;
 import com.cheapquest.backend.dto.rawg.RawgScreenshotDto;
+import com.cheapquest.backend.dto.rawg.RawgTagDto;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public final class RawgMapper {
 
     private static final Logger log = LoggerFactory.getLogger(RawgMapper.class);
-    private static final String NON_ALNUM = "[^a-z0-9]";
+    private static final String NON_ALNUM_REGEX = "[^a-z0-9]";
+    private static final Pattern NON_ALNUM = Pattern.compile(NON_ALNUM_REGEX);
     private static final int LEVENSHTEIN_MAX_DISTANCE = 5;
 
     public Optional<RawgGameDto> pickExactMatch(List<RawgGameDto> matches, String targetName) {
@@ -117,7 +124,7 @@ public final class RawgMapper {
                 .toList();
     }
 
-    public List<RawgGenre> toGenres(List<com.cheapquest.backend.dto.rawg.RawgGenreDto> genres) {
+    public List<RawgGenre> toGenres(List<RawgGenreDto> genres) {
         if (genres == null) {
             return List.of();
         }
@@ -126,7 +133,7 @@ public final class RawgMapper {
                 .toList();
     }
 
-    public List<RawgTag> toTags(List<com.cheapquest.backend.dto.rawg.RawgTagDto> tags) {
+    public List<RawgTag> toTags(List<RawgTagDto> tags) {
         if (tags == null) {
             return List.of();
         }
@@ -135,18 +142,18 @@ public final class RawgMapper {
                 .toList();
     }
 
-    public List<RawgPlatform> toPlatforms(List<com.cheapquest.backend.dto.rawg.RawgPlatformEntryDto> entries) {
+    public List<RawgPlatform> toPlatforms(List<RawgPlatformEntryDto> entries) {
         if (entries == null) {
             return List.of();
         }
         return entries.stream()
-                .map(com.cheapquest.backend.dto.rawg.RawgPlatformEntryDto::platform)
+                .map(RawgPlatformEntryDto::platform)
                 .filter(Objects::nonNull)
                 .map(p -> new RawgPlatform(p.id(), p.name(), p.slug()))
                 .toList();
     }
 
-    public List<DeveloperSummary> toDeveloperSummaries(List<com.cheapquest.backend.dto.rawg.RawgDeveloperDto> developers) {
+    public List<DeveloperSummary> toDeveloperSummaries(List<RawgDeveloperDto> developers) {
         if (developers == null) {
             return List.of();
         }
@@ -155,7 +162,7 @@ public final class RawgMapper {
                 .toList();
     }
 
-    public List<PublisherSummary> toPublisherSummaries(List<com.cheapquest.backend.dto.rawg.RawgPublisherDto> publishers) {
+    public List<PublisherSummary> toPublisherSummaries(List<RawgPublisherDto> publishers) {
         if (publishers == null) {
             return List.of();
         }
@@ -201,9 +208,7 @@ public final class RawgMapper {
     }
 
     static String normalize(String s) {
-        return s.trim()
-                .toLowerCase(Locale.ROOT)
-                .replaceAll(NON_ALNUM, "");
+        return NON_ALNUM.matcher(s.trim().toLowerCase(Locale.ROOT)).replaceAll("");
     }
 
     static int levenshtein(String a, String b) {

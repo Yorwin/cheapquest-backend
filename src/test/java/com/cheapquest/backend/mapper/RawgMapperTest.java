@@ -17,6 +17,7 @@ import com.cheapquest.backend.dto.rawg.RawgPlatformRefDto;
 import com.cheapquest.backend.dto.rawg.RawgPublisherDto;
 import com.cheapquest.backend.dto.rawg.RawgScreenshotDto;
 import com.cheapquest.backend.dto.rawg.RawgTagDto;
+import com.cheapquest.backend.fixtures.RawgDtoFixtures;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -27,9 +28,9 @@ class RawgMapperTest {
 
     @Test
     void pickExactMatch_picksFarCryNotSpecialEdition() {
-        var farCry = DtoBuilder.dto("far-cry", "Far Cry").build();
-        var special = DtoBuilder.dto("far-cry-special-edition", "Far Cry: Special Edition").build();
-        var farCry2 = DtoBuilder.dto("far-cry-2", "Far Cry 2").build();
+        var farCry = RawgDtoFixtures.dto("far-cry", "Far Cry").build();
+        var special = RawgDtoFixtures.dto("far-cry-special-edition", "Far Cry: Special Edition").build();
+        var farCry2 = RawgDtoFixtures.dto("far-cry-2", "Far Cry 2").build();
 
         Optional<RawgGameDto> found = mapper.pickExactMatch(List.of(farCry, special, farCry2), "Far Cry");
 
@@ -39,7 +40,7 @@ class RawgMapperTest {
 
     @Test
     void pickExactMatch_isCaseInsensitiveAndIgnoresPunctuation() {
-        var hl2 = DtoBuilder.dto("half-life-2", "Half-Life 2").build();
+        var hl2 = RawgDtoFixtures.dto("half-life-2", "Half-Life 2").build();
 
         Optional<RawgGameDto> found = mapper.pickExactMatch(List.of(hl2), "  half-life 2  ");
 
@@ -49,13 +50,13 @@ class RawgMapperTest {
 
     @Test
     void pickExactMatch_emptyOnNoMatch() {
-        var portal2 = DtoBuilder.dto("portal-2", "Portal 2").build();
+        var portal2 = RawgDtoFixtures.dto("portal-2", "Portal 2").build();
         assertThat(mapper.pickExactMatch(List.of(portal2), "Portal")).isEmpty();
     }
 
     @Test
     void pickExactMatch_emptyOnNullInputs() {
-        var portal = DtoBuilder.dto("portal", "Portal").build();
+        var portal = RawgDtoFixtures.dto("portal", "Portal").build();
         assertThat(mapper.pickExactMatch(null, "Portal")).isEmpty();
         assertThat(mapper.pickExactMatch(List.of(portal), null)).isEmpty();
         assertThat(mapper.pickExactMatch(null, null)).isEmpty();
@@ -63,9 +64,9 @@ class RawgMapperTest {
 
     @Test
     void pickClosestByLevenshtein_findsFuzzyMatch() {
-        var farCry = DtoBuilder.dto("far-cry", "Far Cry").build();
-        var farCry2 = DtoBuilder.dto("far-cry-2", "Far Cry 2").build();
-        var stardew = DtoBuilder.dto("stardew-valley", "Stardew Valley").build();
+        var farCry = RawgDtoFixtures.dto("far-cry", "Far Cry").build();
+        var farCry2 = RawgDtoFixtures.dto("far-cry-2", "Far Cry 2").build();
+        var stardew = RawgDtoFixtures.dto("stardew-valley", "Stardew Valley").build();
 
         Optional<RawgGameDto> found = mapper.pickClosestByLevenshtein(
                 List.of(farCry, farCry2, stardew), "Farcry");
@@ -76,8 +77,8 @@ class RawgMapperTest {
 
     @Test
     void pickClosestByLevenshtein_picksMostSimilar() {
-        var farCry2 = DtoBuilder.dto("far-cry-2", "Far Cry 2").build();
-        var farCry3 = DtoBuilder.dto("far-cry-3", "Far Cry 3").build();
+        var farCry2 = RawgDtoFixtures.dto("far-cry-2", "Far Cry 2").build();
+        var farCry3 = RawgDtoFixtures.dto("far-cry-3", "Far Cry 3").build();
 
         Optional<RawgGameDto> found = mapper.pickClosestByLevenshtein(List.of(farCry2, farCry3), "Far Cry 2");
 
@@ -87,10 +88,30 @@ class RawgMapperTest {
 
     @Test
     void pickClosestByLevenshtein_emptyWhenAllTooFar() {
-        var somethingElse = DtoBuilder.dto("completely-different", "Completely Different Thing").build();
+        var somethingElse = RawgDtoFixtures.dto("completely-different", "Completely Different Thing").build();
 
         Optional<RawgGameDto> found = mapper.pickClosestByLevenshtein(
                 List.of(somethingElse), "Far Cry");
+
+        assertThat(found).isEmpty();
+    }
+
+    @Test
+    void pickClosestByLevenshtein_picksAtThresholdBoundary() {
+        var farCry3 = RawgDtoFixtures.dto("far-cry-3", "Far Cry 3").build();
+
+        Optional<RawgGameDto> found = mapper.pickClosestByLevenshtein(List.of(farCry3), "farcry");
+
+        assertThat(found).isPresent();
+        assertThat(found.get().slug()).isEqualTo("far-cry-3");
+    }
+
+    @Test
+    void pickClosestByLevenshtein_rejectsJustOverThreshold() {
+        var unrelated = RawgDtoFixtures.dto("stardew-valley", "Stardew Valley").build();
+
+        Optional<RawgGameDto> found = mapper.pickClosestByLevenshtein(
+                List.of(unrelated), "farcry");
 
         assertThat(found).isEmpty();
     }
@@ -103,7 +124,7 @@ class RawgMapperTest {
 
     @Test
     void pickTrailerUrl_prefersClipVideo() {
-        var detail = DtoBuilder.dto("x", "X")
+        var detail = RawgDtoFixtures.dto("x", "X")
                 .clip(new RawgClipDto("https://clip/short", "https://clip/full", "vid", null))
                 .build();
         var movie = new RawgMovieDto(1, "trailer", null,
@@ -114,7 +135,7 @@ class RawgMapperTest {
 
     @Test
     void pickTrailerUrl_fallsBackToClipShort() {
-        var detail = DtoBuilder.dto("x", "X")
+        var detail = RawgDtoFixtures.dto("x", "X")
                 .clip(new RawgClipDto("https://clip/short", null, "vid", null))
                 .build();
 
@@ -123,7 +144,7 @@ class RawgMapperTest {
 
     @Test
     void pickTrailerUrl_fallsBackToFirstMovieMax() {
-        var detail = DtoBuilder.dto("x", "X").build();
+        var detail = RawgDtoFixtures.dto("x", "X").build();
         var movie = new RawgMovieDto(1, "trailer", null,
                 new RawgMovieDataDto("https://yt/480", "https://yt/max", "https://yt/full"));
 
@@ -132,7 +153,7 @@ class RawgMapperTest {
 
     @Test
     void pickTrailerUrl_fallsBackToFirstMovieFull() {
-        var detail = DtoBuilder.dto("x", "X").build();
+        var detail = RawgDtoFixtures.dto("x", "X").build();
         var movie = new RawgMovieDto(1, "trailer", null,
                 new RawgMovieDataDto("https://yt/480", null, "https://yt/full"));
 
@@ -141,14 +162,14 @@ class RawgMapperTest {
 
     @Test
     void pickTrailerUrl_nullWhenNoClipAndNoMovies() {
-        var detail = DtoBuilder.dto("x", "X").build();
+        var detail = RawgDtoFixtures.dto("x", "X").build();
         assertThat(mapper.pickTrailerUrl(detail, null)).isNull();
         assertThat(mapper.pickTrailerUrl(detail, List.of())).isNull();
     }
 
     @Test
     void pickTrailerUrl_nullWhenClipBlankAndMoviesEmpty() {
-        var detail = DtoBuilder.dto("x", "X")
+        var detail = RawgDtoFixtures.dto("x", "X")
                 .clip(new RawgClipDto("", "", "vid", null))
                 .build();
         assertThat(mapper.pickTrailerUrl(detail, List.of())).isNull();
@@ -156,11 +177,11 @@ class RawgMapperTest {
 
     @Test
     void toDlcSummaries_extractsSlugNameReleasedAndImage() {
-        var rtx = DtoBuilder.dto("portal-with-rtx", "Portal with RTX")
+        var rtx = RawgDtoFixtures.dto("portal-with-rtx", "Portal with RTX")
                 .released("2022-12-08")
                 .backgroundImage("https://x/rtx.jpg")
                 .build();
-        var companion = DtoBuilder.dto("portal-companion-collection", "Portal: Companion Collection")
+        var companion = RawgDtoFixtures.dto("portal-companion-collection", "Portal: Companion Collection")
                 .released("2022-06-28")
                 .backgroundImage("https://x/comp.jpg")
                 .build();
@@ -287,7 +308,7 @@ class RawgMapperTest {
 
     @Test
     void toDetails_assemblesAllFields() {
-        var detail = DtoBuilder.dto("portal", "Portal")
+        var detail = RawgDtoFixtures.dto("portal", "Portal")
                 .description("<p>HTML description</p>")
                 .backgroundImage("https://x/portal.jpg")
                 .additionsCount(4)
@@ -304,7 +325,7 @@ class RawgMapperTest {
                 .platforms(List.of(new RawgPlatformEntryDto(new RawgPlatformRefDto(4, "PC", "pc"))))
                 .build();
 
-        var addition = DtoBuilder.dto("portal-with-rtx", "Portal with RTX")
+        var addition = RawgDtoFixtures.dto("portal-with-rtx", "Portal with RTX")
                 .released("2022-12-08")
                 .build();
         var creator = new RawgCreatorDto(1, "Gabe Newell", "gabe-newell", null, null, "Founder", 1);
@@ -357,93 +378,4 @@ class RawgMapperTest {
         assertThat(RawgMapper.levenshtein("abc", "")).isEqualTo(3);
     }
 
-    static final class DtoBuilder {
-        private final String slug;
-        private final String name;
-        private String description;
-        private String backgroundImage;
-        private int additionsCount;
-        private int creatorsCount;
-        private int moviesCount;
-        private int screenshotsCount;
-        private String released;
-        private String website;
-        private double rating;
-        private int ratingTop;
-        private Integer metacritic;
-        private List<RawgGenreDto> genres = List.of();
-        private List<RawgTagDto> tags = List.of();
-        private List<RawgPlatformEntryDto> platforms = List.of();
-        private RawgClipDto clip;
-
-        private DtoBuilder(String slug, String name) {
-            this.slug = slug;
-            this.name = name;
-        }
-
-        static DtoBuilder dto(String slug, String name) {
-            return new DtoBuilder(slug, name);
-        }
-
-        DtoBuilder description(String s) { this.description = s; return this; }
-        DtoBuilder backgroundImage(String s) { this.backgroundImage = s; return this; }
-        DtoBuilder additionsCount(int v) { this.additionsCount = v; return this; }
-        DtoBuilder creatorsCount(int v) { this.creatorsCount = v; return this; }
-        DtoBuilder moviesCount(int v) { this.moviesCount = v; return this; }
-        DtoBuilder screenshotsCount(int v) { this.screenshotsCount = v; return this; }
-        DtoBuilder released(String s) { this.released = s; return this; }
-        DtoBuilder website(String s) { this.website = s; return this; }
-        DtoBuilder rating(double v) { this.rating = v; return this; }
-        DtoBuilder ratingTop(int v) { this.ratingTop = v; return this; }
-        DtoBuilder metacritic(Integer v) { this.metacritic = v; return this; }
-        DtoBuilder genres(List<RawgGenreDto> v) { this.genres = v; return this; }
-        DtoBuilder tags(List<RawgTagDto> v) { this.tags = v; return this; }
-        DtoBuilder platforms(List<RawgPlatformEntryDto> v) { this.platforms = v; return this; }
-        DtoBuilder clip(RawgClipDto v) { this.clip = v; return this; }
-
-        RawgGameDto build() {
-            return new RawgGameDto(
-                    1,                              // id
-                    slug,                           // slug
-                    name,                           // name
-                    name,                           // nameOriginal
-                    description,                    // description
-                    null,                           // descriptionRaw
-                    released,                       // released
-                    false,                          // tba
-                    null,                           // updated
-                    backgroundImage,                // backgroundImage
-                    null,                           // backgroundImageAdditional
-                    website,                        // website
-                    rating,                         // rating
-                    ratingTop,                      // ratingTop
-                    null,                           // ratings
-                    0,                              // ratingsCount
-                    0,                              // reviewsCount
-                    0,                              // reviewsTextCount
-                    metacritic,                     // metacritic
-                    null,                           // metacriticUrl
-                    0,                              // playtime
-                    0,                              // parentsCount
-                    additionsCount,                 // additionsCount
-                    0,                              // gameSeriesCount
-                    screenshotsCount,               // screenshotsCount
-                    moviesCount,                    // moviesCount
-                    creatorsCount,                  // creatorsCount
-                    0,                              // achievementsCount
-                    0,                              // parentAchievementsCount
-                    clip,                           // clip
-                    null,                           // alternativeNames
-                    null,                           // developers
-                    null,                           // publishers
-                    genres,                         // genres
-                    tags,                           // tags
-                    platforms,                      // platforms
-                    null,                           // parentPlatforms
-                    null,                           // esrbRating
-                    null,                           // stores
-                    null                            // shortScreenshots
-            );
-        }
-    }
 }

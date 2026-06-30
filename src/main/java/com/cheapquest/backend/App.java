@@ -4,6 +4,7 @@ import com.cheapquest.backend.client.CheapSharkClient;
 import com.cheapquest.backend.client.RawgClient;
 import com.cheapquest.backend.config.AppProperties;
 import com.cheapquest.backend.config.DefaultHttpFetcher;
+import com.cheapquest.backend.config.FirebaseConfig;
 import com.cheapquest.backend.config.HttpClientFactory;
 import com.cheapquest.backend.config.HttpFetcher;
 import com.cheapquest.backend.domain.AggregatedGame;
@@ -55,6 +56,9 @@ public final class App {
         System.out.println("[smoke] cheapshark.baseUrl=" + props.cheapsharkBaseUrl());
         System.out.println("[smoke] rawg.baseUrl=" + props.rawgBaseUrl());
         System.out.println("[smoke] running with " + GameFixtures.all().size() + " fixture games");
+
+        boolean firebaseReady = new FirebaseConfig(props).initialize();
+        System.out.println("[firebase] " + (firebaseReady ? "ready" : "skipped (missing FIREBASE_PROJECT_ID or FIREBASE_CREDENTIALS_PATH)"));
 
         List<CheapSharkStoreDto> stores = loadStoresOrAbort(client);
         if (stores == null) {

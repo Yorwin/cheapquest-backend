@@ -25,6 +25,9 @@ import com.cheapquest.backend.service.ValidationService;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import java.net.http.HttpClient;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -50,13 +53,15 @@ public final class App {
                 props.rawgRetryMaxAttempts(), props.rawgRetryBaseDelayMillis());
         Gson gson = new GsonBuilder().disableHtmlEscaping().create();
 
+        Clock clock = Clock.systemUTC();
+
         CheapSharkClient client = new CheapSharkClient(cheapsharkFetcher, gson, props.cheapsharkBaseUrl());
         CheapSharkMapper mapper = new CheapSharkMapper();
         RawgClient rawgClient = new RawgClient(rawgFetcher, gson, props.rawgBaseUrl(), props.rawgApiKey());
         RawgMapper rawgMapper = new RawgMapper();
-        RawgAggregationService rawgService = new RawgAggregationService(rawgClient, rawgMapper);
-        ValidationService validator = new ValidationService();
-        GameMerger merger = new GameMerger();
+        RawgAggregationService rawgService = new RawgAggregationService(rawgClient, rawgMapper, clock);
+        ValidationService validator = new ValidationService(clock);
+        GameMerger merger = new GameMerger(clock);
 
         System.out.println("[smoke] cheapshark.baseUrl=" + props.cheapsharkBaseUrl());
         System.out.println("[smoke] rawg.baseUrl=" + props.rawgBaseUrl());
@@ -71,7 +76,7 @@ public final class App {
         }
         System.out.println("[stores] loaded " + stores.size() + " (" + countActive(stores) + " active)");
 
-        GameAggregationService service = new GameAggregationService(client, mapper, stores);
+        GameAggregationService service = new GameAggregationService(client, mapper, stores, clock);
 
         for (HardcodedGame game : GameFixtures.all()) {
             runCombinedAggregation(service, rawgService, validator, merger, game);
@@ -101,6 +106,7 @@ public final class App {
         }
         AggregatedGame merged = merger.merge(deals, rawgAgg);
         ValidationReport report = validator.evaluate(merged);
+        printSourceFetchedAt(deals, rawgAgg);
         printValidation(report);
     }
 
@@ -194,5 +200,21 @@ public final class App {
                 report.status(),
                 report.missingFields(),
                 report.lastFullFetchAt()));
+    }
+
+    private static void printSourceFetchedAt(GameDeals deals, AggregatedGame rawgAgg) {
+        Instant now = Instant.now();
+        if (deals != null) {
+            Duration age = Duration.between(deals.fetchedAt(), now);
+            System.out.println("  [cheapshark.fetchedAt] %s (age=%s)".formatted(deals.fetchedAt(), age));
+        } else {
+            System.out.println("  [cheapshark.fetchedAt] (not fetched)");
+        }
+        if (rawgAgg != null) {
+            Duration age = Duration.between(rawgAgg.rawg().fetchedAt(), now);
+            System.out.println("  [rawg.fetchedAt] %s (age=%s)".formatted(rawgAgg.rawg().fetchedAt(), age));
+        } else {
+            System.out.println("  [rawg.fetchedAt] (not fetched)");
+        }
     }
 }

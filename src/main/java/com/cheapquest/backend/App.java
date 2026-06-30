@@ -22,6 +22,7 @@ import com.cheapquest.backend.mapper.CheapSharkMapper;
 import com.cheapquest.backend.mapper.FirebaseMapper;
 import com.cheapquest.backend.mapper.RawgMapper;
 import com.cheapquest.backend.service.GameAggregationService;
+import com.cheapquest.backend.service.GameHydrationService;
 import com.cheapquest.backend.service.GameMerger;
 import com.cheapquest.backend.service.RawgAggregationService;
 import com.cheapquest.backend.service.ValidationService;
@@ -96,6 +97,12 @@ public final class App {
             return;
         }
 
+        if ("hydrate".equals(mode)) {
+            runHydrate(firebaseClient, service, rawgService, validator, merger, clock);
+            System.out.println("[hydrate] end");
+            return;
+        }
+
         for (HardcodedGame game : GameFixtures.all()) {
             runCombinedAggregation(service, rawgService, validator, merger, game);
         }
@@ -131,6 +138,28 @@ public final class App {
             }
         }
         System.out.println("[bootstrap] done created=" + created + " skipped=" + skipped + " failed=" + failed);
+    }
+
+    private static void runHydrate(FirebaseClient firebaseClient,
+            GameAggregationService csService, RawgAggregationService rawgService,
+            ValidationService validator, GameMerger merger, Clock clock) {
+        if (firebaseClient == null) {
+            System.out.println("[hydrate] ABORT: firebase client not ready");
+            return;
+        }
+        GameHydrationService hydration = new GameHydrationService(
+                firebaseClient, new FirebaseMapper(),
+                csService, rawgService, merger, validator, clock);
+        com.cheapquest.backend.dto.HydrationReport report = hydration.hydrateAll();
+        System.out.println("[hydrate] processed=" + report.processed()
+                + " complete=" + report.complete()
+                + " partial=" + report.partial()
+                + " empty=" + report.empty()
+                + " failed=" + report.failed()
+                + " durationMs=" + report.durationMs());
+        if (!report.failures().isEmpty()) {
+            System.out.println("[hydrate] failures=" + report.failures());
+        }
     }
 
     private static List<CheapSharkStoreDto> loadStoresOrAbort(CheapSharkClient client) {

@@ -8,13 +8,13 @@ import com.cheapquest.backend.domain.validation.ValidationReport;
 import com.cheapquest.backend.domain.validation.ValidationStatus;
 import com.cheapquest.backend.dto.HydrationReport;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
+import com.cheapquest.backend.dto.firebase.HydrationPatch;
 import com.cheapquest.backend.exception.GameNotFoundException;
 import com.cheapquest.backend.mapper.FirebaseMapper;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -165,7 +165,7 @@ public final class GameHydrationService {
             return ValidationStatus.EMPTY;
         }
 
-        Map<String, Object> patch = firebaseMapper.toHydrationPatch(merged, report);
+        HydrationPatch patch = firebaseMapper.toHydrationPatch(merged, report);
         firebaseClient.update(slug, patch);
         log.info("hydrate_doc_ok slug={} status={} missing={}",
                 slug, report.status(), report.missingFields().size());

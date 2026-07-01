@@ -12,6 +12,7 @@ import com.cheapquest.backend.domain.validation.ValidationReport;
 import com.cheapquest.backend.domain.validation.ValidationStatus;
 import com.cheapquest.backend.dto.firebase.CheapsharkBlock;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
+import com.cheapquest.backend.dto.firebase.HydrationPatch;
 import com.cheapquest.backend.dto.firebase.LocaleBlock;
 import com.cheapquest.backend.dto.firebase.OfferDto;
 import com.cheapquest.backend.dto.firebase.RawgBlock;
@@ -212,16 +213,26 @@ class FirebaseMapperTest {
                 T,
                 null);
 
-        Map<String, Object> patch = mapper.toHydrationPatch(game, report);
+        HydrationPatch patch = mapper.toHydrationPatch(game, report);
 
-        assertThat(patch).containsKey("title");
-        assertThat(patch).containsKey("cheapshark");
-        assertThat(patch).containsKey("rawg");
-        assertThat(patch).containsKey("locales");
-        assertThat(patch).containsKey("validationReport");
-        assertThat(patch).doesNotContainKey("slug");
-        assertThat(patch).doesNotContainKey("addedAt");
-        assertThat(patch).doesNotContainKey("active");
+        assertThat(patch.title()).isEqualTo("Portal");
+        assertThat(patch.cheapshark().synced()).isTrue();
+        assertThat(patch.rawg().synced()).isTrue();
+        assertThat(patch.locales()).containsKey("en");
+        assertThat(patch.validationReport()).isNotNull();
+    }
+
+    @Test
+    void toHydrationPatch_doesNotCarryMetadataFields() {
+        AggregatedGame game = new AggregatedGame("Portal", "Portal", "portal",
+                fullDeals(), fullRawg(), T);
+        ValidationReport report = new ValidationReport(
+                ValidationStatus.PARTIAL, EnumSet.of(GameField.TRAILER), T, null);
+
+        HydrationPatch patch = mapper.toHydrationPatch(game, report);
+        Map<String, Object> firestoreMap = patch.toFirestoreMap();
+
+        assertThat(firestoreMap).containsOnlyKeys("title", "cheapshark", "rawg", "locales", "validationReport");
     }
 
     @Test
@@ -231,9 +242,9 @@ class FirebaseMapperTest {
         ValidationReport report = new ValidationReport(
                 ValidationStatus.PARTIAL, EnumSet.of(GameField.TRAILER), T, null);
 
-        Map<String, Object> patch = mapper.toHydrationPatch(game, report);
+        HydrationPatch patch = mapper.toHydrationPatch(game, report);
 
-        assertThat(patch.get("title")).isEqualTo("Portal (Canonical)");
+        assertThat(patch.title()).isEqualTo("Portal (Canonical)");
     }
 
     @Test
@@ -243,14 +254,12 @@ class FirebaseMapperTest {
         ValidationReport report = new ValidationReport(
                 ValidationStatus.PARTIAL, EnumSet.of(GameField.TRAILER), T, null);
 
-        Map<String, Object> patch = mapper.toHydrationPatch(game, report);
-        @SuppressWarnings("unchecked")
-        Map<String, LocaleBlock> locales = (Map<String, LocaleBlock>) patch.get("locales");
+        HydrationPatch patch = mapper.toHydrationPatch(game, report);
 
-        assertThat(locales.get("en").synced()).isTrue();
-        assertThat(locales.get("en").updatedAt()).isEqualTo(T.toString());
-        assertThat(locales.get("es").synced()).isFalse();
-        assertThat(locales.get("fr").synced()).isFalse();
+        assertThat(patch.locales().get("en").synced()).isTrue();
+        assertThat(patch.locales().get("en").updatedAt()).isEqualTo(T.toString());
+        assertThat(patch.locales().get("es").synced()).isFalse();
+        assertThat(patch.locales().get("fr").synced()).isFalse();
     }
 
     @Test
@@ -260,11 +269,9 @@ class FirebaseMapperTest {
         ValidationReport report = new ValidationReport(
                 ValidationStatus.PARTIAL, EnumSet.of(GameField.DESCRIPTION), T, null);
 
-        Map<String, Object> patch = mapper.toHydrationPatch(game, report);
-        @SuppressWarnings("unchecked")
-        Map<String, LocaleBlock> locales = (Map<String, LocaleBlock>) patch.get("locales");
+        HydrationPatch patch = mapper.toHydrationPatch(game, report);
 
-        assertThat(locales.get("en").synced()).isFalse();
+        assertThat(patch.locales().get("en").synced()).isFalse();
     }
 
     @Test
@@ -274,12 +281,22 @@ class FirebaseMapperTest {
         ValidationReport report = new ValidationReport(
                 ValidationStatus.PARTIAL, EnumSet.of(GameField.TRAILER, GameField.STORES), T, null);
 
-        Map<String, Object> patch = mapper.toHydrationPatch(game, report);
-        Object reportObj = patch.get("validationReport");
-        assertThat(reportObj).isInstanceOf(ValidationReportDto.class);
-        ValidationReportDto dto = (ValidationReportDto) reportObj;
-        assertThat(dto.status()).isEqualTo("PARTIAL");
-        assertThat(dto.missingFields()).containsExactlyInAnyOrder("TRAILER", "STORES");
+        HydrationPatch patch = mapper.toHydrationPatch(game, report);
+
+        assertThat(patch.validationReport().status()).isEqualTo("PARTIAL");
+        assertThat(patch.validationReport().missingFields()).containsExactlyInAnyOrder("TRAILER", "STORES");
+    }
+
+    @Test
+    void hydrationPatch_toFirestoreMap_round_trip() {
+        HydrationPatch patch = mapper.toHydrationPatch(
+                new AggregatedGame("Portal", "Portal", "portal", fullDeals(), fullRawg(), T),
+                new ValidationReport(ValidationStatus.PARTIAL, EnumSet.of(GameField.TRAILER), T, null));
+
+        Map<String, Object> firestoreMap = patch.toFirestoreMap();
+
+        assertThat(firestoreMap).containsOnlyKeys("title", "cheapshark", "rawg", "locales", "validationReport");
+        assertThat(firestoreMap.get("title")).isEqualTo("Portal");
     }
 
     private static GameDeals fullDeals() {

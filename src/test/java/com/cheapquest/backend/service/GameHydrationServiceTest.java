@@ -2,7 +2,6 @@ package com.cheapquest.backend.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -21,6 +20,7 @@ import com.cheapquest.backend.domain.validation.ValidationReport;
 import com.cheapquest.backend.domain.validation.ValidationStatus;
 import com.cheapquest.backend.dto.HydrationReport;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
+import com.cheapquest.backend.dto.firebase.HydrationPatch;
 import com.cheapquest.backend.dto.firebase.LocaleBlock;
 import com.cheapquest.backend.exception.FirebaseUnavailableException;
 import com.cheapquest.backend.exception.GameNotFoundException;
@@ -80,7 +80,7 @@ class GameHydrationServiceTest {
         AggregatedGame rawgAgg = new AggregatedGame("Portal", "Portal", "portal",
                 null, sampleRawg(), T);
         when(rawgService.aggregate("Portal")).thenReturn(rawgAgg);
-        when(firebaseMapper.toHydrationPatch(any(), any())).thenReturn(Map.of("k", "v"));
+        when(firebaseMapper.toHydrationPatch(any(), any())).thenReturn(samplePatch());
 
         HydrationReport report = service.hydrateAll();
 
@@ -90,7 +90,7 @@ class GameHydrationServiceTest {
         assertThat(report.empty()).isZero();
         assertThat(report.failed()).isZero();
         assertThat(report.failures()).isEmpty();
-        verify(firebaseClient).update(eq("portal"), anyMap());
+        verify(firebaseClient).update(eq("portal"), any(HydrationPatch.class));
     }
 
     @Test
@@ -103,14 +103,14 @@ class GameHydrationServiceTest {
         AggregatedGame rawgAgg = new AggregatedGame("Portal", "Portal", "portal",
                 null, rawgNoTrailer, T);
         when(rawgService.aggregate("Portal")).thenReturn(rawgAgg);
-        when(firebaseMapper.toHydrationPatch(any(), any())).thenReturn(Map.of("k", "v"));
+        when(firebaseMapper.toHydrationPatch(any(), any())).thenReturn(samplePatch());
 
         HydrationReport report = service.hydrateAll();
 
         assertThat(report.processed()).isEqualTo(1);
         assertThat(report.partial()).isEqualTo(1);
         assertThat(report.complete()).isZero();
-        verify(firebaseClient).update(eq("portal"), anyMap());
+        verify(firebaseClient).update(eq("portal"), any(HydrationPatch.class));
     }
 
     @Test
@@ -129,7 +129,7 @@ class GameHydrationServiceTest {
         assertThat(report.complete()).isZero();
         assertThat(report.partial()).isZero();
         assertThat(report.failed()).isZero();
-        verify(firebaseClient, never()).update(anyString(), anyMap());
+        verify(firebaseClient, never()).update(anyString(), any(HydrationPatch.class));
     }
 
     @Test
@@ -139,13 +139,13 @@ class GameHydrationServiceTest {
         when(csService.aggregateByName("Portal")).thenReturn(sampleDeals());
         when(rawgService.aggregate("Portal"))
                 .thenThrow(new GameNotFoundException("no rawg"));
-        when(firebaseMapper.toHydrationPatch(any(), any())).thenReturn(Map.of("k", "v"));
+        when(firebaseMapper.toHydrationPatch(any(), any())).thenReturn(samplePatch());
 
         HydrationReport report = service.hydrateAll();
 
         assertThat(report.processed()).isEqualTo(1);
         assertThat(report.partial()).isEqualTo(1);
-        verify(firebaseClient).update(eq("portal"), anyMap());
+        verify(firebaseClient).update(eq("portal"), any(HydrationPatch.class));
     }
 
     @Test
@@ -157,13 +157,13 @@ class GameHydrationServiceTest {
         AggregatedGame rawgAgg = new AggregatedGame("Portal", "Portal", "portal",
                 null, sampleRawg(), T);
         when(rawgService.aggregate("Portal")).thenReturn(rawgAgg);
-        when(firebaseMapper.toHydrationPatch(any(), any())).thenReturn(Map.of("k", "v"));
+        when(firebaseMapper.toHydrationPatch(any(), any())).thenReturn(samplePatch());
 
         HydrationReport report = service.hydrateAll();
 
         assertThat(report.processed()).isEqualTo(1);
         assertThat(report.partial()).isEqualTo(1);
-        verify(firebaseClient).update(eq("portal"), anyMap());
+        verify(firebaseClient).update(eq("portal"), any(HydrationPatch.class));
     }
 
     @Test
@@ -174,9 +174,9 @@ class GameHydrationServiceTest {
         AggregatedGame rawgAgg = new AggregatedGame("Portal", "Portal", "portal",
                 null, sampleRawg(), T);
         when(rawgService.aggregate("Portal")).thenReturn(rawgAgg);
-        when(firebaseMapper.toHydrationPatch(any(), any())).thenReturn(Map.of("k", "v"));
+        when(firebaseMapper.toHydrationPatch(any(), any())).thenReturn(samplePatch());
         org.mockito.Mockito.doThrow(new FirebaseUnavailableException("boom"))
-                .when(firebaseClient).update(eq("portal"), anyMap());
+                .when(firebaseClient).update(eq("portal"), any(HydrationPatch.class));
 
         HydrationReport report = service.hydrateAll();
 
@@ -198,14 +198,14 @@ class GameHydrationServiceTest {
         AggregatedGame rawgAgg = new AggregatedGame("X", "X", "x",
                 null, sampleRawg(), T);
         when(rawgService.aggregate(anyString())).thenReturn(rawgAgg);
-        when(firebaseMapper.toHydrationPatch(any(), any())).thenReturn(Map.of("k", "v"));
+        when(firebaseMapper.toHydrationPatch(any(), any())).thenReturn(samplePatch());
 
         HydrationReport report = service.hydrateAll();
 
         assertThat(report.processed()).isEqualTo(3);
         assertThat(report.partial()).isEqualTo(1);
         assertThat(report.complete()).isEqualTo(2);
-        verify(firebaseClient, times(3)).update(anyString(), anyMap());
+        verify(firebaseClient, times(3)).update(anyString(), any(HydrationPatch.class));
     }
 
     @Test
@@ -254,10 +254,10 @@ class GameHydrationServiceTest {
         AggregatedGame rawgAgg = new AggregatedGame("Portal", "Portal", "portal",
                 null, sampleRawg(), T);
         when(rawgService.aggregate("Portal")).thenReturn(rawgAgg);
-        when(firebaseMapper.toHydrationPatch(any(), any())).thenReturn(Map.of("k", "v"));
+        when(firebaseMapper.toHydrationPatch(any(), any())).thenReturn(samplePatch());
 
         assertThat(service.hydrateOne("portal")).isTrue();
-        verify(firebaseClient).update(eq("portal"), anyMap());
+        verify(firebaseClient).update(eq("portal"), any(HydrationPatch.class));
     }
 
     @Test
@@ -268,7 +268,7 @@ class GameHydrationServiceTest {
         AggregatedGame rawgAgg = new AggregatedGame("Portal", "Portal", "portal",
                 null, sampleRawg(), T);
         when(rawgService.aggregate("Portal")).thenReturn(rawgAgg);
-        when(firebaseMapper.toHydrationPatch(any(), any())).thenReturn(Map.of("k", "v"));
+        when(firebaseMapper.toHydrationPatch(any(), any())).thenReturn(samplePatch());
 
         service.hydrateAll();
 
@@ -278,6 +278,17 @@ class GameHydrationServiceTest {
 
     private static GameDocumentDto sampleDoc(String slug, String title) {
         return GameDocumentDtoFixtures.emptyDoc(slug, title);
+    }
+
+    private static HydrationPatch samplePatch() {
+        return new HydrationPatch(
+                "Portal",
+                com.cheapquest.backend.dto.firebase.CheapsharkBlock.empty(),
+                com.cheapquest.backend.dto.firebase.RawgBlock.empty(),
+                Map.of("es", LocaleBlock.unsynced(),
+                        "en", LocaleBlock.unsynced(),
+                        "fr", LocaleBlock.unsynced()),
+                null);
     }
 
     private static GameDeals sampleDeals() {

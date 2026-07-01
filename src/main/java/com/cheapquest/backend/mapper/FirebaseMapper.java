@@ -9,6 +9,7 @@ import com.cheapquest.backend.domain.validation.ValidationReport;
 import com.cheapquest.backend.domain.validation.ValidationStatus;
 import com.cheapquest.backend.dto.firebase.CheapsharkBlock;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
+import com.cheapquest.backend.dto.firebase.HydrationPatch;
 import com.cheapquest.backend.dto.firebase.LocaleBlock;
 import com.cheapquest.backend.dto.firebase.OfferDto;
 import com.cheapquest.backend.dto.firebase.RawgBlock;
@@ -82,23 +83,21 @@ public final class FirebaseMapper {
                 null);
     }
 
-    public Map<String, Object> toHydrationPatch(AggregatedGame game, ValidationReport report) {
+    public HydrationPatch toHydrationPatch(AggregatedGame game, ValidationReport report) {
         Instant now = Instant.now(clock);
-        Map<String, Object> patch = new HashMap<>();
-
-        patch.put("title", game.canonicalName());
-        patch.put("cheapshark", toCheapsharkBlock(game.cheapShark()));
-        patch.put("rawg", toRawgBlock(game.rawg()));
-        patch.put("validationReport", toValidationReportDto(report));
 
         LocaleBlock enLocale = game.rawg() == null
                 ? LocaleBlock.unsynced()
                 : new LocaleBlock(true, now.toString());
         Map<String, LocaleBlock> locales = new HashMap<>(UNSYNCED_LOCALES);
         locales.put(LOCALE_EN, enLocale);
-        patch.put("locales", locales);
 
-        return patch;
+        return new HydrationPatch(
+                game.canonicalName(),
+                toCheapsharkBlock(game.cheapShark()),
+                toRawgBlock(game.rawg()),
+                locales,
+                toValidationReportDto(report));
     }
 
     public CheapsharkBlock toCheapsharkBlock(GameDeals deals) {

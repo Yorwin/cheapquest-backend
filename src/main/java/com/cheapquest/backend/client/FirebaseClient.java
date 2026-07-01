@@ -2,6 +2,7 @@ package com.cheapquest.backend.client;
 
 import com.cheapquest.backend.config.AppProperties;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
+import com.cheapquest.backend.dto.firebase.HydrationPatch;
 import com.cheapquest.backend.exception.FirebaseUnavailableException;
 import com.google.api.core.ApiFuture;
 import com.google.cloud.firestore.CollectionReference;
@@ -12,7 +13,6 @@ import com.google.cloud.firestore.QueryDocumentSnapshot;
 import com.google.cloud.firestore.QuerySnapshot;
 import com.google.cloud.firestore.WriteResult;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Supplier;
@@ -77,12 +77,13 @@ public final class FirebaseClient {
     }
 
     /**
-     * Surgical update: only the fields present in {@code fields} are
-     * rewritten. Fails if the document does not exist.
+     * Surgical update: only the fields present in the {@link HydrationPatch}
+     * are rewritten (title, cheapshark, rawg, locales, validationReport).
+     * Fails if the document does not exist.
      */
-    public void update(String slug, Map<String, Object> fields) {
+    public void update(String slug, HydrationPatch patch) {
         DocumentReference ref = gamesCollection().document(slug);
-        await("updating", slug, () -> ref.update(fields));
+        await("updating", slug, () -> ref.update(patch.toFirestoreMap()));
     }
 
     private CollectionReference gamesCollection() {

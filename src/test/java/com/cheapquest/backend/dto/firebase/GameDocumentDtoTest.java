@@ -33,7 +33,7 @@ class GameDocumentDtoTest {
                                 new OfferDto("3", "Epic", null,
                                         new BigDecimal("35.00"), new BigDecimal("59.99"),
                                         new BigDecimal("41.67"), "https://deal/3"))),
-                new RawgBlock(true, 4321L, "2026-06-30T10:05:00Z",
+                new RawgBlock(true, "2026-06-30T10:05:00Z",
                         Map.of("slug", "far-cry-6", "name", "Far Cry 6",
                                 "released", "2021-10-06")),
                 Map.of(
@@ -54,7 +54,7 @@ class GameDocumentDtoTest {
         GameDocumentDto original = new GameDocumentDto(
                 "Portal", "portal", "en", true, "2026-06-30T10:00:00Z",
                 new CheapsharkBlock(false, null, null, null, 0, List.of()),
-                new RawgBlock(false, null, null, null),
+                new RawgBlock(false, null, null),
                 Map.of(
                         "es", new LocaleBlock(false, null),
                         "en", new LocaleBlock(false, null),

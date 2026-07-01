@@ -213,12 +213,12 @@ class GameHydrationServiceTest {
         GameDocumentDto docNoSlug = new GameDocumentDto(
                 "Title", null, "en", true, T.toString(),
                 new CheapsharkBlock(false, null, null, null, 0, List.of()),
-                new RawgBlock(false, null, null, null),
+                new RawgBlock(false, null, null),
                 Map.of("es", new LocaleBlock(false, null)), null);
         GameDocumentDto docNoTitle = new GameDocumentDto(
                 null, "slug", "en", true, T.toString(),
                 new CheapsharkBlock(false, null, null, null, 0, List.of()),
-                new RawgBlock(false, null, null, null),
+                new RawgBlock(false, null, null),
                 Map.of("es", new LocaleBlock(false, null)), null);
         when(firebaseClient.readAll()).thenReturn(List.of(docNoSlug, docNoTitle));
 
@@ -280,7 +280,7 @@ class GameHydrationServiceTest {
         return new GameDocumentDto(
                 title, slug, "en", true, T.toString(),
                 new CheapsharkBlock(false, null, null, null, 0, List.of()),
-                new RawgBlock(false, null, null, null),
+                new RawgBlock(false, null, null),
                 Map.of("es", new LocaleBlock(false, null),
                         "en", new LocaleBlock(false, null),
                         "fr", new LocaleBlock(false, null)),

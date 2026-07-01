@@ -20,7 +20,6 @@ import com.google.gson.TypeAdapter;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -77,7 +76,7 @@ public final class FirebaseMapper {
                 true,
                 now.toString(),
                 new CheapsharkBlock(false, null, null, null, 0, List.of()),
-                new RawgBlock(false, null, null, null),
+                new RawgBlock(false, null, null),
                 locales,
                 null);
     }
@@ -124,11 +123,10 @@ public final class FirebaseMapper {
 
     public RawgBlock toRawgBlock(RawgDetails rawg) {
         if (rawg == null) {
-            return new RawgBlock(false, null, null, null);
+            return new RawgBlock(false, null, null);
         }
         Map<String, Object> dataMap = rawgDetailsToMap(rawg);
-        Long id = parseLongOrNull(rawg.slug());
-        return new RawgBlock(true, id, rawg.fetchedAt().toString(), dataMap);
+        return new RawgBlock(true, rawg.fetchedAt().toString(), dataMap);
     }
 
     public ValidationReportDto toValidationReportDto(ValidationReport report) {
@@ -151,28 +149,14 @@ public final class FirebaseMapper {
         if (title == null) {
             throw new IllegalArgumentException("title");
         }
-        String lower = title.toLowerCase(Locale.ROOT).trim();
-        StringBuilder out = new StringBuilder(lower.length());
-        boolean lastWasHyphen = false;
-        for (int i = 0; i < lower.length(); i++) {
-            char c = lower.charAt(i);
-            if (isAsciiAlnum(c)) {
-                out.append(c);
-                lastWasHyphen = false;
-            } else if (c == ' ' || c == '-' || c == '_') {
-                if (out.length() > 0 && !lastWasHyphen) {
-                    out.append('-');
-                    lastWasHyphen = true;
-                }
-            }
-        }
-        while (out.length() > 0 && out.charAt(out.length() - 1) == '-') {
-            out.deleteCharAt(out.length() - 1);
-        }
-        if (out.length() == 0) {
+        String slug = title.toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9 _-]+", "")
+                .replaceAll("[\\s_-]+", "-")
+                .replaceAll("^-|-$", "");
+        if (slug.isEmpty()) {
             throw new IllegalArgumentException("title produces empty slug: " + title);
         }
-        return out.toString();
+        return slug;
     }
 
     private OfferDto toOfferDto(Offer o) {
@@ -195,37 +179,7 @@ public final class FirebaseMapper {
         return out;
     }
 
-    private static Long parseLongOrNull(String s) {
-        if (s == null) {
-            return null;
-        }
-        try {
-            return Long.parseLong(s);
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
-    private static boolean isAsciiAlnum(char c) {
-        return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
-    }
-
-    static ValidationStatus parseStatusOrNull(String s) {
-        if (s == null) {
-            return null;
-        }
-        try {
-            return ValidationStatus.valueOf(s);
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
-    }
-
-    static BigDecimal nullToZero(BigDecimal bd) {
-        return bd == null ? BigDecimal.ZERO : bd;
-    }
-
-    private static final class InstantTypeAdapter extends TypeAdapter<Instant> {
+    static final class InstantTypeAdapter extends TypeAdapter<Instant> {
         @Override
         public void write(JsonWriter out, Instant value) throws IOException {
             if (value == null) {

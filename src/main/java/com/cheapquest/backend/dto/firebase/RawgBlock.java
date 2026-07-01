@@ -10,7 +10,6 @@ import java.util.Map;
  */
 public record RawgBlock(
         Boolean synced,
-        Long id,
         String fetchedAt,
         Map<String, Object> data) {
 }

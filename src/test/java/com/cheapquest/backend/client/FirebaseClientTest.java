@@ -214,7 +214,7 @@ class FirebaseClientTest {
         return new GameDocumentDto(
                 title, slug, "en", true, "2026-06-30T10:00:00Z",
                 new CheapsharkBlock(false, null, null, null, 0, List.of()),
-                new RawgBlock(false, null, null, null),
+                new RawgBlock(false, null, null),
                 Map.of("es", new LocaleBlock(false, null),
                         "en", new LocaleBlock(false, null),
                         "fr", new LocaleBlock(false, null)),

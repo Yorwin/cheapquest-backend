@@ -35,18 +35,7 @@ class FirebaseMapperTest {
 
     private final Gson gson = new GsonBuilder()
             .disableHtmlEscaping()
-            .registerTypeAdapter(java.time.Instant.class,
-                    new com.google.gson.TypeAdapter<java.time.Instant>() {
-                        @Override
-                        public void write(com.google.gson.stream.JsonWriter out, java.time.Instant v) throws java.io.IOException {
-                            if (v == null) { out.nullValue(); } else { out.value(v.toString()); }
-                        }
-                        @Override
-                        public java.time.Instant read(com.google.gson.stream.JsonReader in) throws java.io.IOException {
-                            if (in.peek() == com.google.gson.stream.JsonToken.NULL) { in.nextNull(); return null; }
-                            return java.time.Instant.parse(in.nextString());
-                        }
-                    })
+            .registerTypeAdapter(java.time.Instant.class, new FirebaseMapper.InstantTypeAdapter())
             .create();
     private final Clock clock = Clock.fixed(T, ZoneOffset.UTC);
     private final FirebaseMapper mapper = new FirebaseMapper(gson, clock);
@@ -164,7 +153,6 @@ class FirebaseMapperTest {
     void toRawgBlock_returnsAllFalseWhenRawgIsNull() {
         RawgBlock block = mapper.toRawgBlock(null);
         assertThat(block.synced()).isFalse();
-        assertThat(block.id()).isNull();
         assertThat(block.fetchedAt()).isNull();
         assertThat(block.data()).isNull();
     }
@@ -176,7 +164,6 @@ class FirebaseMapperTest {
         RawgBlock block = mapper.toRawgBlock(rawg);
 
         assertThat(block.synced()).isTrue();
-        assertThat(block.id()).isNull();
         assertThat(block.fetchedAt()).isEqualTo(T.toString());
         assertThat(block.data()).isNotNull();
         assertThat(block.data()).containsKey("slug");

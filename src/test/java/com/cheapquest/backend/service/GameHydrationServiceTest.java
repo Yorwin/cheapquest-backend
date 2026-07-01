@@ -20,11 +20,11 @@ import com.cheapquest.backend.domain.validation.GameField;
 import com.cheapquest.backend.domain.validation.ValidationReport;
 import com.cheapquest.backend.domain.validation.ValidationStatus;
 import com.cheapquest.backend.dto.HydrationReport;
-import com.cheapquest.backend.dto.firebase.CheapsharkBlock;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
 import com.cheapquest.backend.dto.firebase.LocaleBlock;
-import com.cheapquest.backend.dto.firebase.RawgBlock;
+import com.cheapquest.backend.exception.FirebaseUnavailableException;
 import com.cheapquest.backend.exception.GameNotFoundException;
+import com.cheapquest.backend.fixtures.GameDocumentDtoFixtures;
 import com.cheapquest.backend.fixtures.RawgDetailsFixtures;
 import com.cheapquest.backend.mapper.FirebaseMapper;
 import java.math.BigDecimal;
@@ -175,7 +175,7 @@ class GameHydrationServiceTest {
                 null, sampleRawg(), T);
         when(rawgService.aggregate("Portal")).thenReturn(rawgAgg);
         when(firebaseMapper.toHydrationPatch(any(), any())).thenReturn(Map.of("k", "v"));
-        org.mockito.Mockito.doThrow(new com.cheapquest.backend.exception.FirebaseUnavailableException("boom"))
+        org.mockito.Mockito.doThrow(new FirebaseUnavailableException("boom"))
                 .when(firebaseClient).update(eq("portal"), anyMap());
 
         HydrationReport report = service.hydrateAll();
@@ -212,14 +212,14 @@ class GameHydrationServiceTest {
     void hydrateAll_skipsDocsWithMissingSlugOrTitle() {
         GameDocumentDto docNoSlug = new GameDocumentDto(
                 "Title", null, "en", true, T.toString(),
-                new CheapsharkBlock(false, null, null, null, 0, List.of()),
-                new RawgBlock(false, null, null),
-                Map.of("es", new LocaleBlock(false, null)), null);
+                com.cheapquest.backend.dto.firebase.CheapsharkBlock.empty(),
+                com.cheapquest.backend.dto.firebase.RawgBlock.empty(),
+                Map.of("es", LocaleBlock.unsynced()), null);
         GameDocumentDto docNoTitle = new GameDocumentDto(
                 null, "slug", "en", true, T.toString(),
-                new CheapsharkBlock(false, null, null, null, 0, List.of()),
-                new RawgBlock(false, null, null),
-                Map.of("es", new LocaleBlock(false, null)), null);
+                com.cheapquest.backend.dto.firebase.CheapsharkBlock.empty(),
+                com.cheapquest.backend.dto.firebase.RawgBlock.empty(),
+                Map.of("es", LocaleBlock.unsynced()), null);
         when(firebaseClient.readAll()).thenReturn(List.of(docNoSlug, docNoTitle));
 
         HydrationReport report = service.hydrateAll();
@@ -277,14 +277,7 @@ class GameHydrationServiceTest {
     }
 
     private static GameDocumentDto sampleDoc(String slug, String title) {
-        return new GameDocumentDto(
-                title, slug, "en", true, T.toString(),
-                new CheapsharkBlock(false, null, null, null, 0, List.of()),
-                new RawgBlock(false, null, null),
-                Map.of("es", new LocaleBlock(false, null),
-                        "en", new LocaleBlock(false, null),
-                        "fr", new LocaleBlock(false, null)),
-                null);
+        return GameDocumentDtoFixtures.emptyDoc(slug, title);
     }
 
     private static GameDeals sampleDeals() {

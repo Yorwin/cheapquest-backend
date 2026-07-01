@@ -44,6 +44,11 @@ public final class FirebaseMapper {
     private static final String LOCALE_ES = "es";
     private static final String LOCALE_FR = "fr";
 
+    private static final Map<String, LocaleBlock> UNSYNCED_LOCALES = Map.of(
+            LOCALE_ES, LocaleBlock.unsynced(),
+            LOCALE_EN, LocaleBlock.unsynced(),
+            LOCALE_FR, LocaleBlock.unsynced());
+
     private final Gson gson;
     private final Clock clock;
 
@@ -65,19 +70,15 @@ public final class FirebaseMapper {
 
     public GameDocumentDto toBootstrapDocument(String title, String slug) {
         Instant now = Instant.now(clock);
-        Map<String, LocaleBlock> locales = new HashMap<>();
-        locales.put(LOCALE_ES, new LocaleBlock(false, null));
-        locales.put(LOCALE_EN, new LocaleBlock(false, null));
-        locales.put(LOCALE_FR, new LocaleBlock(false, null));
         return new GameDocumentDto(
                 title,
                 slug,
                 "en",
                 true,
                 now.toString(),
-                new CheapsharkBlock(false, null, null, null, 0, List.of()),
-                new RawgBlock(false, null, null),
-                locales,
+                CheapsharkBlock.empty(),
+                RawgBlock.empty(),
+                Map.copyOf(UNSYNCED_LOCALES),
                 null);
     }
 
@@ -90,14 +91,11 @@ public final class FirebaseMapper {
         patch.put("rawg", toRawgBlock(game.rawg()));
         patch.put("validationReport", toValidationReportDto(report));
 
-        Map<String, LocaleBlock> locales = new HashMap<>();
-        if (game.rawg() != null) {
-            locales.put(LOCALE_EN, new LocaleBlock(true, now.toString()));
-        } else {
-            locales.put(LOCALE_EN, new LocaleBlock(false, null));
-        }
-        locales.put(LOCALE_ES, new LocaleBlock(false, null));
-        locales.put(LOCALE_FR, new LocaleBlock(false, null));
+        LocaleBlock enLocale = game.rawg() == null
+                ? LocaleBlock.unsynced()
+                : new LocaleBlock(true, now.toString());
+        Map<String, LocaleBlock> locales = new HashMap<>(UNSYNCED_LOCALES);
+        locales.put(LOCALE_EN, enLocale);
         patch.put("locales", locales);
 
         return patch;
@@ -105,7 +103,7 @@ public final class FirebaseMapper {
 
     public CheapsharkBlock toCheapsharkBlock(GameDeals deals) {
         if (deals == null) {
-            return new CheapsharkBlock(false, null, null, null, 0, List.of());
+            return CheapsharkBlock.empty();
         }
         OfferDto bestDto = deals.bestDeal() == null ? null : toOfferDto(deals.bestDeal());
         List<OfferDto> restDtos = new ArrayList<>(deals.offers().size());

@@ -15,4 +15,8 @@ public record CheapsharkBlock(
         OfferDto bestDeal,
         Integer offerCount,
         List<OfferDto> deals) {
+
+    public static CheapsharkBlock empty() {
+        return new CheapsharkBlock(false, null, null, null, 0, List.of());
+    }
 }

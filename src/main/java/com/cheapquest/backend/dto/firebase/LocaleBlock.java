@@ -9,4 +9,8 @@ package com.cheapquest.backend.dto.firebase;
 public record LocaleBlock(
         Boolean synced,
         String updatedAt) {
+
+    public static LocaleBlock unsynced() {
+        return new LocaleBlock(false, null);
+    }
 }

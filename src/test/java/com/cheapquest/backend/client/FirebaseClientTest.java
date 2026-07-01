@@ -11,12 +11,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.cheapquest.backend.config.AppProperties;
-import com.cheapquest.backend.dto.firebase.CheapsharkBlock;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
-import com.cheapquest.backend.dto.firebase.LocaleBlock;
-import com.cheapquest.backend.dto.firebase.RawgBlock;
-import com.cheapquest.backend.dto.firebase.ValidationReportDto;
 import com.cheapquest.backend.exception.FirebaseUnavailableException;
+import com.cheapquest.backend.fixtures.GameDocumentDtoFixtures;
 import com.google.api.core.ApiFuture;
 import com.google.api.core.SettableApiFuture;
 import com.google.cloud.firestore.CollectionReference;
@@ -211,13 +208,6 @@ class FirebaseClientTest {
     }
 
     private static GameDocumentDto sampleDto(String slug, String title) {
-        return new GameDocumentDto(
-                title, slug, "en", true, "2026-06-30T10:00:00Z",
-                new CheapsharkBlock(false, null, null, null, 0, List.of()),
-                new RawgBlock(false, null, null),
-                Map.of("es", new LocaleBlock(false, null),
-                        "en", new LocaleBlock(false, null),
-                        "fr", new LocaleBlock(false, null)),
-                null);
+        return GameDocumentDtoFixtures.emptyDoc(slug, title);
     }
 }

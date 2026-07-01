@@ -12,4 +12,8 @@ public record RawgBlock(
         Boolean synced,
         String fetchedAt,
         Map<String, Object> data) {
+
+    public static RawgBlock empty() {
+        return new RawgBlock(false, null, null);
+    }
 }

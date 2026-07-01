@@ -81,7 +81,6 @@ public final class App {
         FirebaseClient firebaseClient = firebaseReady
                 ? new FirebaseClient(FirestoreClient.getFirestore(FirebaseApp.getInstance()), props)
                 : null;
-        System.out.println("[firebase.client] " + (firebaseClient != null ? "ready" : "skipped (firebase not ready)"));
 
         List<CheapSharkStoreDto> stores = loadStoresOrAbort(client);
         if (stores == null) {

@@ -8,7 +8,6 @@ import com.cheapquest.backend.domain.validation.ValidationReport;
 import com.cheapquest.backend.domain.validation.ValidationStatus;
 import com.cheapquest.backend.dto.HydrationReport;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
-import com.cheapquest.backend.exception.FirebaseUnavailableException;
 import com.cheapquest.backend.exception.GameNotFoundException;
 import com.cheapquest.backend.mapper.FirebaseMapper;
 import java.time.Clock;
@@ -80,17 +79,12 @@ public final class GameHydrationService {
 
         for (GameDocumentDto doc : docs) {
             try {
-                HydrationOutcome outcome = hydrateInternal(doc);
-                switch (outcome) {
+                ValidationStatus status = hydrateInternal(doc);
+                switch (status) {
                     case COMPLETE -> complete++;
                     case PARTIAL -> partial++;
                     case EMPTY -> empty++;
                 }
-            } catch (FirebaseUnavailableException e) {
-                log.error("hydrate_doc_failed slug={} err={}: {}",
-                        doc.slug(), e.getClass().getSimpleName(), e.getMessage());
-                failures.add(doc.slug() == null ? "<null-slug>" : doc.slug());
-                failed++;
             } catch (RuntimeException e) {
                 log.error("hydrate_doc_failed slug={} err={}: {}",
                         doc.slug(), e.getClass().getSimpleName(), e.getMessage());
@@ -116,9 +110,9 @@ public final class GameHydrationService {
             return false;
         }
         try {
-            HydrationOutcome outcome = hydrateInternal(doc);
-            log.info("hydrate_one_done slug={} outcome={}", slug, outcome);
-            return outcome != HydrationOutcome.EMPTY;
+            ValidationStatus status = hydrateInternal(doc);
+            log.info("hydrate_one_done slug={} outcome={}", slug, status);
+            return status != ValidationStatus.EMPTY;
         } catch (RuntimeException e) {
             log.error("hydrate_one_failed slug={} err={}: {}",
                     slug, e.getClass().getSimpleName(), e.getMessage());
@@ -126,12 +120,12 @@ public final class GameHydrationService {
         }
     }
 
-    private HydrationOutcome hydrateInternal(GameDocumentDto doc) {
+    private ValidationStatus hydrateInternal(GameDocumentDto doc) {
         String slug = doc.slug();
         String title = doc.title();
         if (slug == null || title == null) {
             log.warn("hydrate_skip slug={} reason=missing_slug_or_title", slug);
-            return HydrationOutcome.EMPTY;
+            return ValidationStatus.EMPTY;
         }
 
         log.info("hydrate_doc_start slug={} title=\"{}\"", slug, title);
@@ -168,19 +162,13 @@ public final class GameHydrationService {
 
         if (report.status() == ValidationStatus.EMPTY) {
             log.warn("hydrate_doc_skip slug={} reason=both_sources_failed", slug);
-            return HydrationOutcome.EMPTY;
+            return ValidationStatus.EMPTY;
         }
 
         Map<String, Object> patch = firebaseMapper.toHydrationPatch(merged, report);
         firebaseClient.update(slug, patch);
         log.info("hydrate_doc_ok slug={} status={} missing={}",
                 slug, report.status(), report.missingFields().size());
-        return report.status() == ValidationStatus.COMPLETE
-                ? HydrationOutcome.COMPLETE
-                : HydrationOutcome.PARTIAL;
-    }
-
-    private enum HydrationOutcome {
-        COMPLETE, PARTIAL, EMPTY
+        return report.status();
     }
 }

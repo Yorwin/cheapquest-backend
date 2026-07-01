@@ -16,7 +16,6 @@ import com.cheapquest.backend.dto.firebase.RawgBlock;
 import com.cheapquest.backend.dto.firebase.ValidationReportDto;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.google.gson.JsonObject;
 import com.google.gson.TypeAdapter;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
@@ -168,12 +167,7 @@ public final class FirebaseMapper {
     }
 
     private Map<String, Object> rawgDetailsToMap(RawgDetails rawg) {
-        JsonObject tree = gson.toJsonTree(rawg).getAsJsonObject();
-        Map<String, Object> out = new HashMap<>();
-        for (java.util.Map.Entry<String, com.google.gson.JsonElement> e : tree.entrySet()) {
-            out.put(e.getKey(), gson.fromJson(e.getValue(), Object.class));
-        }
-        return out;
+        return gson.fromJson(gson.toJsonTree(rawg), Map.class);
     }
 
     static final class InstantTypeAdapter extends TypeAdapter<Instant> {

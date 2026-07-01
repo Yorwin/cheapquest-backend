@@ -7,6 +7,7 @@ import com.cheapquest.backend.dto.cheapshark.CheapSharkGameDetailDto;
 import com.cheapquest.backend.dto.cheapshark.CheapSharkGameInfoDto;
 import com.cheapquest.backend.dto.cheapshark.CheapSharkGameSummaryDto;
 import com.cheapquest.backend.dto.cheapshark.CheapSharkStoreDto;
+import com.cheapquest.backend.util.StringNormalize;
 import java.math.BigDecimal;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
@@ -14,7 +15,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -23,7 +23,6 @@ public final class CheapSharkMapper {
     private static final String DEAL_URL_BASE = "https://www.cheapshark.com/redirect?dealID=";
     private static final String UNKNOWN_STORE_PREFIX = "store-";
     private static final String STORE_ASSETS_BASE = "https://www.cheapshark.com";
-    private static final String NON_ALNUM = "[^a-z0-9]";
 
     public Map<String, StoreInfo> toStoreIdToInfo(List<CheapSharkStoreDto> stores) {
         Map<String, StoreInfo> map = new HashMap<>();
@@ -79,9 +78,9 @@ public final class CheapSharkMapper {
         if (matches == null || targetName == null) {
             return Optional.empty();
         }
-        String normalized = normalize(targetName);
+        String normalized = StringNormalize.matchKey(targetName);
         return matches.stream()
-                .filter(m -> m.external() != null && normalize(m.external()).equals(normalized))
+                .filter(m -> m.external() != null && StringNormalize.matchKey(m.external()).equals(normalized))
                 .findFirst();
     }
 
@@ -115,12 +114,6 @@ public final class CheapSharkMapper {
                 best,
                 remaining,
                 fetchedAt);
-    }
-
-    private static String normalize(String s) {
-        return s.trim()
-                .toLowerCase(Locale.ROOT)
-                .replaceAll(NON_ALNUM, "");
     }
 
     private static String toAbsoluteIconUrl(String relative) {

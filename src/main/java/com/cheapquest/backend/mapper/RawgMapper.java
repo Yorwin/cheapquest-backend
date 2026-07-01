@@ -17,28 +17,26 @@ import com.cheapquest.backend.dto.rawg.RawgPlatformEntryDto;
 import com.cheapquest.backend.dto.rawg.RawgPublisherDto;
 import com.cheapquest.backend.dto.rawg.RawgScreenshotDto;
 import com.cheapquest.backend.dto.rawg.RawgTagDto;
+import com.cheapquest.backend.util.StringNormalize;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public final class RawgMapper {
 
     private static final Logger log = LoggerFactory.getLogger(RawgMapper.class);
-    private static final String NON_ALNUM_REGEX = "[^a-z0-9]";
-    private static final Pattern NON_ALNUM = Pattern.compile(NON_ALNUM_REGEX);
     private static final int LEVENSHTEIN_MAX_DISTANCE = 5;
 
     public Optional<RawgGameDto> pickExactMatch(List<RawgGameDto> matches, String targetName) {
         if (matches == null || targetName == null) {
             return Optional.empty();
         }
-        String normalized = normalize(targetName);
+        String normalized = StringNormalize.matchKey(targetName);
         return matches.stream()
-                .filter(m -> m.name() != null && normalize(m.name()).equals(normalized))
+                .filter(m -> m.name() != null && StringNormalize.matchKey(m.name()).equals(normalized))
                 .findFirst();
     }
 
@@ -46,14 +44,14 @@ public final class RawgMapper {
         if (matches == null || matches.isEmpty() || targetName == null) {
             return Optional.empty();
         }
-        String normalized = normalize(targetName);
+        String normalized = StringNormalize.matchKey(targetName);
         RawgGameDto best = null;
         int bestDistance = Integer.MAX_VALUE;
         for (RawgGameDto m : matches) {
             if (m.name() == null) {
                 continue;
             }
-            int distance = levenshtein(normalized, normalize(m.name()));
+            int distance = levenshtein(normalized, StringNormalize.matchKey(m.name()));
             if (distance < bestDistance) {
                 bestDistance = distance;
                 best = m;
@@ -207,10 +205,6 @@ public final class RawgMapper {
                 toCreators(creators),
                 toScreenshotUrls(screenshots),
                 fetchedAt);
-    }
-
-    static String normalize(String s) {
-        return NON_ALNUM.matcher(s.trim().toLowerCase(Locale.ROOT)).replaceAll("");
     }
 
     static int levenshtein(String a, String b) {

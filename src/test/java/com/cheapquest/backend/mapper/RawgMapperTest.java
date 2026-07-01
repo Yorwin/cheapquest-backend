@@ -368,12 +368,6 @@ class RawgMapperTest {
     }
 
     @Test
-    void normalize_keepsAlnumLowercase() {
-        assertThat(RawgMapper.normalize(" Half-Life 2 ")).isEqualTo("halflife2");
-        assertThat(RawgMapper.normalize("FAR_CRY-3!")).isEqualTo("farcry3");
-    }
-
-    @Test
     void levenshtein_knownCases() {
         assertThat(RawgMapper.levenshtein("farcry", "farcry")).isZero();
         assertThat(RawgMapper.levenshtein("farcry", "farcry2")).isEqualTo(1);

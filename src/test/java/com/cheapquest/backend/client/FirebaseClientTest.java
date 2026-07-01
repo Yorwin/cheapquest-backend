@@ -53,20 +53,6 @@ class FirebaseClientTest {
     }
 
     @Test
-    void gamesCollection_returnsCollectionFromFirestore() {
-        assertThat(client.gamesCollection()).isSameAs(gamesCollection);
-        verify(firestore).collection("games");
-    }
-
-    @Test
-    void gamesCollection_usesCustomPathFromProperties() {
-        when(props.firestoreCollectionGamesPath()).thenReturn("custom-games");
-        FirebaseClient custom = new FirebaseClient(firestore, props);
-        custom.gamesCollection();
-        verify(firestore).collection("custom-games");
-    }
-
-    @Test
     void readAll_returnsListOfDocuments() throws Exception {
         QueryDocumentSnapshot doc1 = mock(QueryDocumentSnapshot.class);
         QueryDocumentSnapshot doc2 = mock(QueryDocumentSnapshot.class);

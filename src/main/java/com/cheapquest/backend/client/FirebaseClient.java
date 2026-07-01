@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,45 +41,22 @@ public final class FirebaseClient {
         log.debug("firebase_client_initialized collectionPath={}", collectionPath);
     }
 
-    public CollectionReference gamesCollection() {
-        return firestore.collection(collectionPath);
-    }
-
     public List<GameDocumentDto> readAll() {
-        try {
-            ApiFuture<QuerySnapshot> future = gamesCollection().get();
-            QuerySnapshot snapshot = future.get();
-            List<GameDocumentDto> out = new java.util.ArrayList<>(snapshot.size());
-            for (QueryDocumentSnapshot doc : snapshot.getDocuments()) {
-                out.add(doc.toObject(GameDocumentDto.class));
-            }
-            return out;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new FirebaseUnavailableException("interrupted reading collection " + collectionPath, e);
-        } catch (ExecutionException e) {
-            throw new FirebaseUnavailableException("failed reading collection " + collectionPath, e.getCause());
-        } catch (RuntimeException e) {
-            throw new FirebaseUnavailableException("failed reading collection " + collectionPath, e);
+        QuerySnapshot snapshot = await("reading", collectionPath, () -> gamesCollection().get());
+        List<GameDocumentDto> out = new java.util.ArrayList<>(snapshot.size());
+        for (QueryDocumentSnapshot doc : snapshot.getDocuments()) {
+            out.add(doc.toObject(GameDocumentDto.class));
         }
+        return out;
     }
 
     public Optional<GameDocumentDto> readOne(String slug) {
-        DocumentReference ref = gamesCollection().document(slug);
-        try {
-            DocumentSnapshot snap = ref.get().get();
-            if (!snap.exists()) {
-                return Optional.empty();
-            }
-            return Optional.of(snap.toObject(GameDocumentDto.class));
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new FirebaseUnavailableException("interrupted reading " + slug, e);
-        } catch (ExecutionException e) {
-            throw new FirebaseUnavailableException("failed reading " + slug, e.getCause());
-        } catch (RuntimeException e) {
-            throw new FirebaseUnavailableException("failed reading " + slug, e);
+        DocumentSnapshot snap = await("reading", slug,
+                () -> gamesCollection().document(slug).get());
+        if (!snap.exists()) {
+            return Optional.empty();
         }
+        return Optional.of(snap.toObject(GameDocumentDto.class));
     }
 
     /**
@@ -88,22 +66,13 @@ public final class FirebaseClient {
     public boolean createIfNotExists(String slug, GameDocumentDto dto) {
         DocumentReference ref = gamesCollection().document(slug);
         try {
-            ref.create(dto).get();
+            await("creating", slug, () -> ref.create(dto));
             return true;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new FirebaseUnavailableException("interrupted creating " + slug, e);
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause();
-            log.debug("createIfNotExists {} cause={}: {}", slug,
-                    cause == null ? "null" : cause.getClass().getName(),
-                    cause == null ? "(no cause)" : cause.getMessage());
-            if (isAlreadyExists(cause)) {
+        } catch (FirebaseUnavailableException e) {
+            if (isAlreadyExists(e.getCause())) {
                 return false;
             }
-            throw new FirebaseUnavailableException("failed creating " + slug, cause);
-        } catch (RuntimeException e) {
-            throw new FirebaseUnavailableException("failed creating " + slug, e);
+            throw e;
         }
     }
 
@@ -113,15 +82,34 @@ public final class FirebaseClient {
      */
     public void update(String slug, Map<String, Object> fields) {
         DocumentReference ref = gamesCollection().document(slug);
+        await("updating", slug, () -> ref.update(fields));
+    }
+
+    private CollectionReference gamesCollection() {
+        return firestore.collection(collectionPath);
+    }
+
+    /**
+     * Resolves an {@link ApiFuture}, translating every SDK failure
+     * (interruption, execution failure, runtime error) into a single
+     * {@link FirebaseUnavailableException} tagged with the operation
+     * and the subject. The cause of any wrapped exception is the
+     * original throwable, so callers can still pattern-match on it.
+     *
+     * <p>The future is supplied lazily so that synchronous SDK failures
+     * (e.g. a {@code get()} that throws before returning a future) are
+     * also wrapped.
+     */
+    private static <T> T await(String op, String subject, Supplier<ApiFuture<T>> futureSupplier) {
         try {
-            ref.update(fields).get();
+            return futureSupplier.get().get();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new FirebaseUnavailableException("interrupted updating " + slug, e);
+            throw new FirebaseUnavailableException("interrupted " + op + " " + subject, e);
         } catch (ExecutionException e) {
-            throw new FirebaseUnavailableException("failed updating " + slug, e.getCause());
+            throw new FirebaseUnavailableException("failed " + op + " " + subject, e.getCause());
         } catch (RuntimeException e) {
-            throw new FirebaseUnavailableException("failed updating " + slug, e);
+            throw new FirebaseUnavailableException("failed " + op + " " + subject, e);
         }
     }
 

@@ -4,9 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -18,20 +16,20 @@ import com.cheapquest.backend.dto.firebase.LocaleBlock;
 import com.cheapquest.backend.dto.firebase.RawgBlock;
 import com.cheapquest.backend.exception.FirebaseUnavailableException;
 import com.cheapquest.backend.fixtures.GameDocumentDtoFixtures;
-import com.google.api.core.ApiFuture;
 import com.google.api.core.SettableApiFuture;
 import com.google.cloud.firestore.CollectionReference;
 import com.google.cloud.firestore.DocumentReference;
 import com.google.cloud.firestore.DocumentSnapshot;
 import com.google.cloud.firestore.Firestore;
 import com.google.cloud.firestore.FirestoreException;
+import com.google.cloud.firestore.Query;
 import com.google.cloud.firestore.QueryDocumentSnapshot;
 import com.google.cloud.firestore.QuerySnapshot;
 import com.google.cloud.firestore.WriteResult;
-import io.grpc.Status;
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -50,36 +48,80 @@ class FirebaseClientTest {
         when(firestore.collection("games")).thenReturn(gamesCollection);
         props = mock(AppProperties.class);
         when(props.firestoreCollectionGamesPath()).thenReturn("games");
+        when(props.firestoreReadPageSize()).thenReturn(300);
         client = new FirebaseClient(firestore, props);
     }
 
     @Test
-    void readAll_returnsListOfDocuments() throws Exception {
-        QueryDocumentSnapshot doc1 = mock(QueryDocumentSnapshot.class);
-        QueryDocumentSnapshot doc2 = mock(QueryDocumentSnapshot.class);
-        GameDocumentDto dto1 = sampleDto("portal", "Portal");
-        GameDocumentDto dto2 = sampleDto("hl2", "Half-Life 2");
-        when(doc1.toObject(GameDocumentDto.class)).thenReturn(dto1);
-        when(doc2.toObject(GameDocumentDto.class)).thenReturn(dto2);
-        QuerySnapshot snapshot = mock(QuerySnapshot.class);
-        when(snapshot.size()).thenReturn(2);
-        when(snapshot.getDocuments()).thenReturn(List.of(doc1, doc2));
-        SettableApiFuture<QuerySnapshot> future = SettableApiFuture.create();
-        future.set(snapshot);
-        when(gamesCollection.get()).thenReturn(future);
+    void readAll_iteratesSinglePageWhenCollectionFitsInOnePage() throws Exception {
+        QueryDocumentSnapshot doc1 = mockQueryDoc("portal", "Portal");
+        QueryDocumentSnapshot doc2 = mockQueryDoc("hl2", "Half-Life 2");
+        Query firstQuery = mockQueryReturning(List.of(doc1, doc2));
+        when(gamesCollection.limit(300)).thenReturn(firstQuery);
 
-        List<GameDocumentDto> result = client.readAll();
+        List<GameDocumentDto> result = collect(client.readAll());
 
-        assertThat(result).containsExactly(dto1, dto2);
+        assertThat(result).containsExactly(
+                GameDocumentDtoFixtures.emptyDoc("portal", "Portal"),
+                GameDocumentDtoFixtures.emptyDoc("hl2", "Half-Life 2"));
+    }
+
+    @Test
+    void readAll_paginatesAcrossMultiplePages() throws Exception {
+        FirebaseClient smallPageClient = new FirebaseClient(firestore, "games", 2);
+        QueryDocumentSnapshot d1 = mockQueryDoc("portal", "Portal");
+        QueryDocumentSnapshot d2 = mockQueryDoc("hl2", "Half-Life 2");
+        QueryDocumentSnapshot d3 = mockQueryDoc("stardew", "Stardew Valley");
+
+        Query q1 = mockQueryReturning(List.of(d1, d2));
+        Query q2 = mockQueryReturning(List.of(d3));
+        when(gamesCollection.limit(2)).thenReturn(q1);
+        when(q1.startAfter(d2)).thenReturn(q2);
+
+        List<GameDocumentDto> result = collect(smallPageClient.readAll());
+
+        assertThat(result).hasSize(3);
+        verify(gamesCollection, org.mockito.Mockito.times(2)).limit(2);
+        verify(q1).get();
+        verify(q1).startAfter(d2);
+        verify(q2).get();
+        verify(q2, org.mockito.Mockito.never()).startAfter(any(DocumentSnapshot.class));
+    }
+
+    @Test
+    void readAll_returnsEmptyIterableWhenCollectionIsEmpty() throws Exception {
+        Query emptyQuery = mockQueryReturning(List.of());
+        when(gamesCollection.limit(300)).thenReturn(emptyQuery);
+
+        List<GameDocumentDto> result = collect(client.readAll());
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void readAll_stopsAfterPartialLastPage() throws Exception {
+        FirebaseClient smallPageClient = new FirebaseClient(firestore, "games", 3);
+        QueryDocumentSnapshot d1 = mockQueryDoc("portal", "Portal");
+        QueryDocumentSnapshot d2 = mockQueryDoc("hl2", "Half-Life 2");
+        Query q1 = mockQueryReturning(List.of(d1, d2));
+        when(gamesCollection.limit(3)).thenReturn(q1);
+
+        List<GameDocumentDto> result = collect(smallPageClient.readAll());
+
+        assertThat(result).hasSize(2);
+        verify(q1).get();
+        verify(q1, org.mockito.Mockito.never()).startAfter(any(DocumentSnapshot.class));
     }
 
     @Test
     void readAll_wrapsExecutionExceptionInFirebaseUnavailable() {
+        Query failingQuery = mock(Query.class);
         SettableApiFuture<QuerySnapshot> future = SettableApiFuture.create();
         future.setException(new RuntimeException("network down"));
-        when(gamesCollection.get()).thenReturn(future);
+        when(failingQuery.get()).thenReturn(future);
+        when(gamesCollection.limit(300)).thenReturn(failingQuery);
 
-        assertThatThrownBy(() -> client.readAll())
+        assertThatThrownBy(() -> collect(client.readAll()))
                 .isInstanceOf(FirebaseUnavailableException.class)
                 .hasMessageContaining("games")
                 .hasCauseInstanceOf(RuntimeException.class)
@@ -88,9 +130,11 @@ class FirebaseClientTest {
 
     @Test
     void readAll_wrapsRuntimeException() {
-        when(gamesCollection.get()).thenThrow(new RuntimeException("boom"));
+        Query failingQuery = mock(Query.class);
+        when(failingQuery.get()).thenThrow(new RuntimeException("boom"));
+        when(gamesCollection.limit(300)).thenReturn(failingQuery);
 
-        assertThatThrownBy(() -> client.readAll())
+        assertThatThrownBy(() -> collect(client.readAll()))
                 .isInstanceOf(FirebaseUnavailableException.class)
                 .hasMessageContaining("games");
     }
@@ -225,5 +269,30 @@ class FirebaseClientTest {
 
     private static GameDocumentDto sampleDto(String slug, String title) {
         return GameDocumentDtoFixtures.emptyDoc(slug, title);
+    }
+
+    private static QueryDocumentSnapshot mockQueryDoc(String slug, String title) {
+        QueryDocumentSnapshot snap = mock(QueryDocumentSnapshot.class);
+        when(snap.toObject(GameDocumentDto.class)).thenReturn(GameDocumentDtoFixtures.emptyDoc(slug, title));
+        return snap;
+    }
+
+    private static Query mockQueryReturning(List<QueryDocumentSnapshot> docs) {
+        Query query = mock(Query.class);
+        QuerySnapshot snapshot = mock(QuerySnapshot.class);
+        when(snapshot.getDocuments()).thenReturn(docs);
+        SettableApiFuture<QuerySnapshot> future = SettableApiFuture.create();
+        future.set(snapshot);
+        when(query.get()).thenReturn(future);
+        return query;
+    }
+
+    private static List<GameDocumentDto> collect(Iterable<GameDocumentDto> iterable) {
+        List<GameDocumentDto> out = new ArrayList<>();
+        Iterator<GameDocumentDto> it = iterable.iterator();
+        while (it.hasNext()) {
+            out.add(it.next());
+        }
+        return out;
     }
 }

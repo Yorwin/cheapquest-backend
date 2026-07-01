@@ -128,6 +128,10 @@ public final class AppProperties {
         return props.getProperty("firestore.collection.games-path", "games");
     }
 
+    public int firestoreReadPageSize() {
+        return Integer.parseInt(props.getProperty("firestore.read-page-size", "300"));
+    }
+
     public String adminRefreshToken() {
         return props.getProperty("admin.refresh.token");
     }

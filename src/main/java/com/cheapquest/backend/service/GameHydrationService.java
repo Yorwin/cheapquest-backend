@@ -65,9 +65,10 @@ public final class GameHydrationService {
 
     public HydrationReport hydrateAll() {
         long start = clock.millis();
-        List<GameDocumentDto> docs = firebaseClient.readAll();
-        log.info("hydrate_all_start count={}", docs.size());
+        Iterable<GameDocumentDto> docs = firebaseClient.readAll();
+        log.info("hydrate_all_start paginating=true");
 
+        int processed = 0;
         int complete = 0;
         int partial = 0;
         int empty = 0;
@@ -75,6 +76,7 @@ public final class GameHydrationService {
         List<String> failures = new ArrayList<>();
 
         for (GameDocumentDto doc : docs) {
+            processed++;
             try {
                 ValidationStatus status = hydrateInternal(doc);
                 switch (status) {
@@ -92,7 +94,7 @@ public final class GameHydrationService {
 
         long durationMs = clock.millis() - start;
         HydrationReport report = new HydrationReport(
-                docs.size(), complete, partial, empty, failed, durationMs,
+                processed, complete, partial, empty, failed, durationMs,
                 List.copyOf(failures));
         log.info("hydrate_all_done processed={} complete={} partial={} empty={} failed={} durationMs={}",
                 report.processed(), report.complete(), report.partial(),

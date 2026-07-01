@@ -9,7 +9,6 @@ import com.cheapquest.backend.domain.validation.ValidationStatus;
 import com.cheapquest.backend.dto.HydrationReport;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
 import com.cheapquest.backend.dto.firebase.HydrationPatch;
-import com.cheapquest.backend.exception.GameNotFoundException;
 import com.cheapquest.backend.mapper.FirebaseMapper;
 import java.time.Clock;
 import java.time.Instant;
@@ -24,7 +23,7 @@ import org.slf4j.LoggerFactory;
  * game document in Firestore:
  * <ol>
  *   <li>read all docs (or one by slug)</li>
- *   <li>for each: run CheapShark and RAWG pipelines</li>
+ *   <li>for each: delegate the source lookups to {@link GameLookup}</li>
  *   <li>merge and validate</li>
  *   <li>build a partial Firestore patch and {@code update} the
  *       document with the new cheapshark, rawg, locales.en and
@@ -48,19 +47,17 @@ public final class GameHydrationService {
 
     private final FirebaseClient firebaseClient;
     private final FirebaseMapper firebaseMapper;
-    private final GameAggregationService csService;
-    private final RawgAggregationService rawgService;
+    private final GameLookup gameLookup;
     private final GameMerger merger;
     private final ValidationService validator;
     private final Clock clock;
 
     public GameHydrationService(FirebaseClient firebaseClient, FirebaseMapper firebaseMapper,
-            GameAggregationService csService, RawgAggregationService rawgService,
+            GameLookup gameLookup,
             GameMerger merger, ValidationService validator, Clock clock) {
         this.firebaseClient = Objects.requireNonNull(firebaseClient, "firebaseClient");
         this.firebaseMapper = Objects.requireNonNull(firebaseMapper, "firebaseMapper");
-        this.csService = Objects.requireNonNull(csService, "csService");
-        this.rawgService = Objects.requireNonNull(rawgService, "rawgService");
+        this.gameLookup = Objects.requireNonNull(gameLookup, "gameLookup");
         this.merger = Objects.requireNonNull(merger, "merger");
         this.validator = Objects.requireNonNull(validator, "validator");
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -129,35 +126,25 @@ public final class GameHydrationService {
         }
 
         log.info("hydrate_doc_start slug={} title=\"{}\"", slug, title);
-        GameDeals deals = null;
-        try {
-            deals = csService.aggregateByName(title);
+
+        GameLookup.GameLookupResult result = gameLookup.lookupByTitle(title);
+        GameDeals deals = result.deals();
+        AggregatedGame rawgAgg = result.rawgAgg();
+
+        if (deals != null) {
             log.info("hydrate_doc_cheapshark slug={} gameId={} offers={}",
                     slug, deals.gameId(), deals.offerCount());
-        } catch (GameNotFoundException e) {
-            log.warn("hydrate_doc_cheapshark_not_found slug={}: {}", slug, e.getMessage());
-        } catch (RuntimeException e) {
-            log.warn("hydrate_doc_cheapshark_failed slug={} err={}: {}",
-                    slug, e.getClass().getSimpleName(), e.getMessage());
         }
-
-        RawgDetails rawg = null;
-        try {
-            AggregatedGame rawgAgg = rawgService.aggregate(title);
-            rawg = rawgAgg.rawg();
+        if (rawgAgg != null && rawgAgg.rawg() != null) {
+            RawgDetails rawg = rawgAgg.rawg();
             log.info("hydrate_doc_rawg slug={} name=\"{}\" trailer_present={}",
                     slug, rawg.name(), rawg.trailerUrl() != null);
-        } catch (GameNotFoundException e) {
-            log.warn("hydrate_doc_rawg_not_found slug={}: {}", slug, e.getMessage());
-        } catch (RuntimeException e) {
-            log.warn("hydrate_doc_rawg_failed slug={} err={}: {}",
-                    slug, e.getClass().getSimpleName(), e.getMessage());
         }
 
-        AggregatedGame rawgAgg = rawg == null
-                ? new AggregatedGame(title, title, slug, deals, null, Instant.now(clock))
-                : new AggregatedGame(title, rawg.name(), rawg.slug(), deals, rawg, Instant.now(clock));
-        AggregatedGame merged = merger.merge(deals, rawgAgg);
+        AggregatedGame rawgForMerge = rawgAgg != null
+                ? rawgAgg
+                : new AggregatedGame(title, title, slug, deals, null, Instant.now(clock));
+        AggregatedGame merged = merger.merge(deals, rawgForMerge);
         ValidationReport report = validator.evaluate(merged);
 
         if (report.status() == ValidationStatus.EMPTY) {

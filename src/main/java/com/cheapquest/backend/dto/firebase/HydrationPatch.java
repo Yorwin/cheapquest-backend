@@ -6,7 +6,7 @@ import java.util.Map;
 /**
  * The partial Firestore document written on every hydration pass.
  * Carries only the fields that change: the canonical title, the
- * cheapshark / rawg / locales payloads and the latest
+ * cheapshark / rawg payloads and the latest
  * {@link ValidationReportDto}. The {@code slug}, {@code addedAt}
  * and {@code active} flags set at bootstrap are never included
  * here and never rewritten.
@@ -19,12 +19,20 @@ import java.util.Map;
  * {@code DocumentReference.update(Map)}. This is the critical
  * bit that prevents a partial refresh from clobbering the
  * fresh source's existing data with an empty block.
+ *
+ * <p><b>{@code locales} is intentionally not in the patch.</b>
+ * The hydration pipeline writes the english data; the
+ * corresponding {@code locales.en} flag is set to
+ * {@code synced=true} by a separate partial update issued by
+ * the hydration service. Translation services (e.g. DeepL) are
+ * the only writers of {@code locales.es} and {@code locales.fr}.
+ * Bundling the locales into this patch would silently clobber
+ * a previously-saved translation on every refresh.
  */
 public record HydrationPatch(
         String title,
         CheapsharkBlock cheapshark,
         RawgBlock rawg,
-        Map<String, LocaleBlock> locales,
         ValidationReportDto validationReport) {
 
     public Map<String, Object> toFirestoreMap() {
@@ -36,7 +44,6 @@ public record HydrationPatch(
         if (rawg != null) {
             out.put("rawg", rawg);
         }
-        out.put("locales", locales);
         out.put("validationReport", validationReport);
         return out;
     }

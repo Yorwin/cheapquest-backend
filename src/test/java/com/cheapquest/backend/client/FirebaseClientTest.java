@@ -263,7 +263,6 @@ class FirebaseClientTest {
 
         HydrationPatch patch = new HydrationPatch(
                 "X", CheapsharkBlock.empty(), RawgBlock.empty(),
-                Map.of("es", LocaleBlock.unsynced(), "en", LocaleBlock.unsynced(), "fr", LocaleBlock.unsynced()),
                 null);
         client.update("slug", patch);
 
@@ -274,7 +273,6 @@ class FirebaseClientTest {
                 .containsEntry("title", "X")
                 .containsKey("cheapshark")
                 .containsKey("rawg")
-                .containsKey("locales")
                 .containsKey("validationReport");
     }
 
@@ -288,7 +286,6 @@ class FirebaseClientTest {
 
         HydrationPatch patch = new HydrationPatch(
                 "X", null, RawgBlock.empty(),
-                Map.of("es", LocaleBlock.unsynced(), "en", LocaleBlock.unsynced(), "fr", LocaleBlock.unsynced()),
                 null);
         client.update("slug", patch);
 
@@ -299,7 +296,6 @@ class FirebaseClientTest {
                 .containsEntry("title", "X")
                 .doesNotContainKey("cheapshark")
                 .containsKey("rawg")
-                .containsKey("locales")
                 .containsKey("validationReport");
     }
 
@@ -313,7 +309,6 @@ class FirebaseClientTest {
 
         HydrationPatch patch = new HydrationPatch(
                 "X", CheapsharkBlock.empty(), null,
-                Map.of("es", LocaleBlock.unsynced(), "en", LocaleBlock.unsynced(), "fr", LocaleBlock.unsynced()),
                 null);
         client.update("slug", patch);
 
@@ -324,7 +319,6 @@ class FirebaseClientTest {
                 .containsEntry("title", "X")
                 .containsKey("cheapshark")
                 .doesNotContainKey("rawg")
-                .containsKey("locales")
                 .containsKey("validationReport");
     }
 
@@ -339,7 +333,6 @@ class FirebaseClientTest {
 
         HydrationPatch patch = new HydrationPatch(
                 "X", CheapsharkBlock.empty(), RawgBlock.empty(),
-                Map.of("es", LocaleBlock.unsynced(), "en", LocaleBlock.unsynced(), "fr", LocaleBlock.unsynced()),
                 null);
         assertThatThrownBy(() -> client.update("slug", patch))
                 .isInstanceOf(FirebaseUnavailableException.class)
@@ -417,7 +410,6 @@ class FirebaseClientTest {
 
         HydrationPatch patch = new HydrationPatch(
                 "X", CheapsharkBlock.empty(), RawgBlock.empty(),
-                Map.of("es", LocaleBlock.unsynced(), "en", LocaleBlock.unsynced(), "fr", LocaleBlock.unsynced()),
                 null);
         assertThatThrownBy(() -> retryClient.update("missing", patch))
                 .isInstanceOf(DocumentNotFoundException.class)
@@ -439,7 +431,6 @@ class FirebaseClientTest {
 
         HydrationPatch patch = new HydrationPatch(
                 "X", CheapsharkBlock.empty(), RawgBlock.empty(),
-                Map.of("es", LocaleBlock.unsynced(), "en", LocaleBlock.unsynced(), "fr", LocaleBlock.unsynced()),
                 null);
         try {
             retryClient.update("missing", patch);
@@ -464,7 +455,6 @@ class FirebaseClientTest {
 
         HydrationPatch patch = new HydrationPatch(
                 "X", CheapsharkBlock.empty(), RawgBlock.empty(),
-                Map.of("es", LocaleBlock.unsynced(), "en", LocaleBlock.unsynced(), "fr", LocaleBlock.unsynced()),
                 null);
         retryClient.update("slug", patch);
 
@@ -548,6 +538,43 @@ class FirebaseClientTest {
         List<com.cheapquest.backend.dto.firebase.PendingDoc> result = client.readPending();
 
         assertThat(result).containsExactly(p1, p2);
+    }
+
+    @Test
+    void markLocaleSynced_writesDotNotationPartialUpdate() throws Exception {
+        DocumentReference ref = mock(DocumentReference.class);
+        when(gamesCollection.document("portal")).thenReturn(ref);
+        SettableApiFuture<WriteResult> future = SettableApiFuture.create();
+        future.set(mock(WriteResult.class));
+        when(ref.update(anyMap())).thenReturn(future);
+
+        Instant now = Instant.parse("2026-06-30T10:00:00Z");
+        client.markLocaleSynced("portal", "en", now);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(ref).update(captor.capture());
+        // Dot-notation: only the two nested fields are written,
+        // the rest of locales.* and the rest of the document are
+        // untouched.
+        assertThat(captor.getValue())
+                .containsEntry("locales.en.synced", Boolean.TRUE)
+                .containsEntry("locales.en.updatedAt", "2026-06-30T10:00:00Z")
+                .doesNotContainKey("locales.es")
+                .doesNotContainKey("locales.fr")
+                .hasSize(2);
+    }
+
+    @Test
+    void markLocaleSynced_rejectsBlankLang() {
+        assertThatThrownBy(() ->
+                client.markLocaleSynced("portal", "", Instant.parse("2026-06-30T10:00:00Z")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("lang");
+        assertThatThrownBy(() ->
+                client.markLocaleSynced("portal", null, Instant.parse("2026-06-30T10:00:00Z")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("lang");
     }
 
     @Test

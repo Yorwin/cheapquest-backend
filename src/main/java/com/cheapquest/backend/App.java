@@ -100,6 +100,17 @@ public final class App {
                 ? new FirebaseClient(FirestoreClient.getFirestore(FirebaseApp.getInstance()), props)
                 : null;
 
+        // Recover stale pending entries from any previous JVM crash
+        // BEFORE the mode dispatch. This is the only piece of the
+        // startup that mutates Firestore state, so it is bounded
+        // to the modes that actually need pending (smoke, validate
+        // and serve skip it because they are read-only or
+        // long-running and we want them to start clean).
+        if (firebaseClient != null
+                && ("bootstrap".equals(mode) || "hydrate".equals(mode))) {
+            runPendingRecovery(firebaseClient, props, clock);
+        }
+
         List<CheapSharkStoreDto> stores = loadStoresOrAbort(client);
         if (stores == null) {
             return;
@@ -259,6 +270,44 @@ public final class App {
                 Thread.currentThread().interrupt();
             }
             log.error("serve_failed error={}: {}", e.getClass().getSimpleName(), e.getMessage(), e);
+        }
+    }
+
+    private static void runPendingRecovery(FirebaseClient firebaseClient,
+            AppProperties props, Clock clock) {
+        GameHydrationService recoveryOnly = new GameHydrationService(
+                firebaseClient, new FirebaseMapper(clock),
+                new NoopGameLookup(), new GameMerger(clock),
+                new ValidationService(clock),
+                new RefreshPolicy(props, clock),
+                clock, props.refreshMaxRetries());
+        try {
+            int recovered = recoveryOnly.recoverStalePending(
+                    java.time.Duration.ofMinutes(props.pendingStaleThresholdMinutes()));
+            if (recovered > 0) {
+                log.warn("startup_pending_recovery recovered={}", recovered);
+            }
+        } catch (RuntimeException e) {
+            // Recovery must not block the mode dispatch: if Firestore
+            // is flaky at startup we still want the smoke/validate
+            // paths to run, so we log and continue.
+            log.error("startup_pending_recovery_failed err={}: {}",
+                    e.getClass().getSimpleName(), e.getMessage(), e);
+        }
+    }
+
+    /**
+     * {@link GameLookup} stand-in used only by the startup
+     * pending-recovery pass: the recovery never calls
+     * {@code lookupByTitle} (it only resets attempt counters),
+     * so the implementation throws if anything tries to.
+     */
+    private static final class NoopGameLookup implements GameLookup {
+        @Override
+        public GameLookupResult lookupByTitle(String title,
+                java.util.Set<com.cheapquest.backend.service.GameLookup.Source> sources) {
+            throw new UnsupportedOperationException(
+                    "pending recovery must not call lookupByTitle");
         }
     }
 

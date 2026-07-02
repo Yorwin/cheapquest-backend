@@ -1,7 +1,6 @@
 package com.cheapquest.backend.service;
 
 import com.cheapquest.backend.client.FirebaseClient;
-import com.cheapquest.backend.config.AppProperties;
 import com.cheapquest.backend.domain.AggregatedGame;
 import com.cheapquest.backend.domain.GameDeals;
 import com.cheapquest.backend.domain.rawg.RawgDetails;
@@ -38,12 +37,16 @@ import org.slf4j.LoggerFactory;
  *       are stale;</li>
  *   <li>delegate the (subset of) source lookups to {@link GameLookup};</li>
  *   <li>merge and validate;</li>
- *   <li>build a partial Firestore patch and {@code update} the
- *       document with the new cheapshark, rawg, locales.en and
- *       validationReport blocks; the {@code lastFullFetchAt} /
- *       {@code lastPartialFetchAt} timestamps in the report are
- *       updated per the cadence decision;</li>
- *   <li>on success, remove the slug from {@code pending};</li>
+ *   <li>build a partial Firestore patch (title, cheapshark,
+ *       rawg, validationReport) and {@code update} the document;
+ *       the {@code lastFullFetchAt} / {@code lastPartialFetchAt}
+ *       timestamps in the report are updated per the cadence
+ *       decision;</li>
+ *   <li>on success, mark {@code locales.en} as synced via a
+ *       separate partial update (the only locale write the
+ *       hydration path performs; locales.es and locales.fr
+ *       are owned by the future translation pipeline) and
+ *       remove the slug from {@code pending};</li>
  *   <li>on failure, increment the attempt counter on the pending
  *       doc; when the counter reaches {@code maxAttempts} the
  *       slug is moved to the {@code failed} DLQ.</li>
@@ -54,6 +57,14 @@ import org.slf4j.LoggerFactory;
  * produces an empty report (e.g. the game no longer exists in
  * the upstream APIs) eventually lands in the DLQ rather than
  * re-running the lookup on every cron tick.
+ *
+ * <p>On startup, {@link #recoverStalePending(java.time.Duration)}
+ * resets the attempt counter on any pending entry whose
+ * {@code lastAttemptAt} is older than the configured threshold.
+ * This is the recovery path for a JVM crash mid-run: an entry
+ * that was in flight when the JVM died should not accumulate
+ * false attempt counts toward the 3-strike DLQ on the next
+ * boot.
  */
 public final class GameHydrationService {
 
@@ -91,18 +102,6 @@ public final class GameHydrationService {
             throw new IllegalArgumentException("maxAttempts must be >= 1, got " + maxAttempts);
         }
         this.maxAttempts = maxAttempts;
-    }
-
-    /**
-     * Convenience overload that wires {@code maxAttempts} from
-     * {@link AppProperties#refreshMaxRetries()}.
-     */
-    public static GameHydrationService fromProperties(FirebaseClient firebaseClient,
-            FirebaseMapper firebaseMapper, GameLookup gameLookup, GameMerger merger,
-            ValidationService validator, RefreshPolicy refreshPolicy, Clock clock,
-            AppProperties props) {
-        return new GameHydrationService(firebaseClient, firebaseMapper, gameLookup, merger,
-                validator, refreshPolicy, clock, props.refreshMaxRetries());
     }
 
     public HydrationReport hydrateAll() {
@@ -163,7 +162,7 @@ public final class GameHydrationService {
                 }
             } catch (RuntimeException e) {
                 log.error("hydrate_doc_failed slug={} err={}: {}",
-                        slug, e.getClass().getSimpleName(), e.getMessage());
+                        slug, e.getClass().getSimpleName(), e.getMessage(), e);
                 HydrationResult r = recordFailureAndMaybeMoveToFailed(entry,
                         e.getClass().getSimpleName() + ": " + e.getMessage());
                 if (r.movedToFailed) {
@@ -188,6 +187,51 @@ public final class GameHydrationService {
                 report.dealsRefreshed(), report.rawgRefreshed(),
                 report.movedToFailed(), report.durationMs());
         return report;
+    }
+
+    /**
+     * Reset the attempt counter on every pending entry whose
+     * {@code lastAttemptAt} is older than the threshold. Called
+     * on startup to recover from a JVM crash that interrupted
+     * a previous run: an entry that was mid-flight when the
+     * process died would otherwise carry a false attempt count
+     * toward the 3-strike DLQ, even though no actual retry was
+     * attempted. Entries that have never been attempted
+     * ({@code lastAttemptAt == null}, e.g. freshly enqueued by
+     * the bootstrap) are left untouched.
+     *
+     * <p>Returns the number of entries that were reset. The
+     * caller is expected to log this so the operator can spot
+     * chronic instability (a non-zero number on every boot means
+     * the JVM is dying often enough to matter).
+     */
+    public int recoverStalePending(java.time.Duration staleThreshold) {
+        Objects.requireNonNull(staleThreshold, "staleThreshold");
+        if (staleThreshold.isNegative() || staleThreshold.isZero()) {
+            throw new IllegalArgumentException(
+                    "staleThreshold must be positive, got " + staleThreshold);
+        }
+        List<PendingDoc> pending = firebaseClient.readPending();
+        Instant cutoff = Instant.now(clock).minus(staleThreshold);
+        int recovered = 0;
+        for (PendingDoc entry : pending) {
+            if (entry.lastAttemptAt() == null) {
+                continue;
+            }
+            if (entry.lastAttemptAt().isAfter(cutoff)) {
+                continue;
+            }
+            firebaseClient.replacePending(new PendingDoc(
+                    entry.slug(), 0, null, null));
+            log.warn("pending_recovered slug={} previous_attempts={} previous_last_error=\"{}\"",
+                    entry.slug(), entry.attempts(), entry.lastError());
+            recovered++;
+        }
+        if (recovered > 0) {
+            log.info("pending_recovery_done recovered={} threshold={}s",
+                    recovered, staleThreshold.toSeconds());
+        }
+        return recovered;
     }
 
     /**
@@ -257,7 +301,7 @@ public final class GameHydrationService {
             return outcome.status() != ValidationStatus.EMPTY;
         } catch (RuntimeException e) {
             log.error("hydrate_one_failed slug={} err={}: {}",
-                    slug, e.getClass().getSimpleName(), e.getMessage());
+                    slug, e.getClass().getSimpleName(), e.getMessage(), e);
             return false;
         }
     }
@@ -312,6 +356,11 @@ public final class GameHydrationService {
         HydrationPatch patch = firebaseMapper.toHydrationPatch(
                 merged, composed, decision.refreshDeals(), decision.refreshRawg());
         firebaseClient.update(slug, patch);
+        // Mark the english locale as synced now that the english
+        // content is fresh. Done as a separate partial update so
+        // the (future) translation pipeline owns locales.es and
+        // locales.fr without the hydration path clobbering them.
+        firebaseClient.markLocaleSynced(slug, "en", Instant.now(clock));
         log.info("hydrate_doc_ok slug={} status={} missing={} full_refresh={}",
                 slug, composed.status(), composed.missingFields().size(), decision.isFullRefresh());
         return new HydrationOutcome(composed.status(), decision.refreshDeals(), decision.refreshRawg());

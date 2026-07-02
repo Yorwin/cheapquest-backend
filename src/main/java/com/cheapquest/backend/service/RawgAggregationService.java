@@ -114,11 +114,11 @@ public final class RawgAggregationService {
             if (e.status() == 404) {
                 return List.of();
             }
-            log.error("rawg_subfetch_failed label={} status={} - aborting aggregation", label, e.status());
+            log.error("rawg_subfetch_failed label={} status={} - aborting aggregation", label, e.status(), e);
             throw e;
         } catch (RuntimeException e) {
             log.warn("rawg_subfetch_failed label={} error={}: {}",
-                    label, e.getClass().getSimpleName(), e.getMessage());
+                    label, e.getClass().getSimpleName(), e.getMessage(), e);
             return List.of();
         }
     }

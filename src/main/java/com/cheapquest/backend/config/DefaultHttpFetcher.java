@@ -70,7 +70,7 @@ public final class DefaultHttpFetcher implements HttpFetcher {
                 }
                 long delay = computeDelay(attempt);
                 log.warn("http_backoff url={} attempt={} error={} delayMs={}",
-                        maskSecretQueryParam(url), attempt, e.getClass().getSimpleName(), delay);
+                        maskSecretQueryParam(url), attempt, e.getClass().getSimpleName(), delay, e);
                 sleep(delay);
             }
         }

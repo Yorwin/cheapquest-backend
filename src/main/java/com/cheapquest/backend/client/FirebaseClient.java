@@ -233,11 +233,16 @@ public final class FirebaseClient {
 
     /**
      * Surgical update: only the fields present in the {@link HydrationPatch}
-     * are rewritten (title, cheapshark, rawg, locales, validationReport).
+     * are rewritten (title, cheapshark, rawg, validationReport).
      * Throws {@link DocumentNotFoundException} when the document does
      * not exist (so the caller can distinguish a missing doc from a
      * genuine backend failure); rethrows other
      * {@link FirebaseUnavailableException}s as-is.
+     *
+     * <p>{@code locales} is intentionally NOT in the patch: it is
+     * managed by a separate call to {@link #markLocaleSynced} so a
+     * later translation service does not get clobbered on every
+     * hydration.
      */
     public void update(String slug, HydrationPatch patch) {
         DocumentReference ref = gamesCollection().document(slug);
@@ -249,6 +254,26 @@ public final class FirebaseClient {
             }
             throw e;
         }
+    }
+
+    /**
+     * Mark a single locale as synced via a dot-notation partial
+     * update on the {@code locales} map. Only {@code synced} and
+     * {@code updatedAt} are written, leaving the rest of the
+     * document (and the rest of the locales map) untouched. This
+     * is the only write path for {@code locales.en} from the
+     * hydration side; {@code locales.es} and {@code locales.fr}
+     * are owned by the future translation service.
+     */
+    public void markLocaleSynced(String slug, String lang, java.time.Instant syncedAt) {
+        if (lang == null || lang.isBlank()) {
+            throw new IllegalArgumentException("lang must be non-blank, got: " + lang);
+        }
+        DocumentReference ref = gamesCollection().document(slug);
+        Map<String, Object> updates = new java.util.HashMap<>();
+        updates.put("locales." + lang + ".synced", Boolean.TRUE);
+        updates.put("locales." + lang + ".updatedAt", syncedAt.toString());
+        await("mark-locale-synced", slug + "/" + lang, () -> ref.update(updates));
     }
 
     private CollectionReference gamesCollection() {
@@ -288,7 +313,7 @@ public final class FirebaseClient {
                 if (attempt < maxRetries && isTransient(cause)) {
                     long delay = computeBackoffMillis(attempt);
                     log.warn("firebase_retry op={} subject={} attempt={} reason={} delayMs={}",
-                            op, subject, attempt + 1, statusOf(cause), delay);
+                            op, subject, attempt + 1, statusOf(cause), delay, cause);
                     sleep(delay);
                     continue;
                 }
@@ -297,7 +322,7 @@ public final class FirebaseClient {
                 if (attempt < maxRetries && isTransient(e)) {
                     long delay = computeBackoffMillis(attempt);
                     log.warn("firebase_retry op={} subject={} attempt={} reason={} delayMs={}",
-                            op, subject, attempt + 1, statusOf(e), delay);
+                            op, subject, attempt + 1, statusOf(e), delay, e);
                     sleep(delay);
                     continue;
                 }

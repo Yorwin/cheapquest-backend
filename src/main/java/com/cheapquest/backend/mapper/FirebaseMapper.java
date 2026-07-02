@@ -87,19 +87,10 @@ public final class FirebaseMapper {
 
     public HydrationPatch toHydrationPatch(AggregatedGame game, ValidationReport report,
             boolean dealsStale, boolean rawgStale) {
-        Instant now = Instant.now(clock);
-
-        LocaleBlock enLocale = game.rawg() == null
-                ? LocaleBlock.unsynced()
-                : new LocaleBlock(true, now.toString());
-        Map<String, LocaleBlock> locales = new HashMap<>(UNSYNCED_LOCALES);
-        locales.put(LOCALE_EN, enLocale);
-
         return new HydrationPatch(
                 game.canonicalName(),
                 dealsStale ? toCheapsharkBlock(game.cheapShark()) : null,
                 rawgStale ? toRawgBlock(game.rawg()) : null,
-                locales,
                 toValidationReportDto(report));
     }
 

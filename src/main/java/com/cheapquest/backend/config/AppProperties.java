@@ -183,4 +183,16 @@ public final class AppProperties {
     public int refreshRawgMaxAgeDays() {
         return Integer.parseInt(props.getProperty("refresh.rawg-max-age-days", "180"));
     }
+
+    /**
+     * How old a pending entry's {@code lastAttemptAt} can be
+     * before the startup recovery resets its attempt counter.
+     * Prevents chronic false-failures after a JVM crash: an entry
+     * that was mid-flight when the JVM died is reprocessed with
+     * a clean slate once the threshold elapses, not stuck
+     * counting toward a fake third strike.
+     */
+    public int pendingStaleThresholdMinutes() {
+        return Integer.parseInt(props.getProperty("app.pending.stale-threshold-minutes", "60"));
+    }
 }

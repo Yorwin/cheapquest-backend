@@ -236,7 +236,6 @@ class FirebaseMapperTest {
         assertThat(patch.title()).isEqualTo("Portal");
         assertThat(patch.cheapshark().synced()).isTrue();
         assertThat(patch.rawg().synced()).isTrue();
-        assertThat(patch.locales()).containsKey("en");
         assertThat(patch.validationReport()).isNotNull();
     }
 
@@ -250,7 +249,7 @@ class FirebaseMapperTest {
         HydrationPatch patch = mapper.toHydrationPatch(game, report, true, true);
         Map<String, Object> firestoreMap = patch.toFirestoreMap();
 
-        assertThat(firestoreMap).containsOnlyKeys("title", "cheapshark", "rawg", "locales", "validationReport");
+        assertThat(firestoreMap).containsOnlyKeys("title", "cheapshark", "rawg", "validationReport");
     }
 
     @Test
@@ -266,7 +265,12 @@ class FirebaseMapperTest {
     }
 
     @Test
-    void toHydrationPatch_enLocaleIsSyncedWhenRawgPresent() {
+    void toHydrationPatch_omitsLocales() {
+        // The patch must NOT carry locales: a future translation
+        // service writes locales.es and locales.fr; the hydration
+        // path would clobber them on every refresh if locales were
+        // bundled in. The en locale is updated separately via
+        // FirebaseClient.markLocaleSynced.
         AggregatedGame game = new AggregatedGame("Portal", "Portal", "portal",
                 fullDeals(), fullRawg(), T);
         ValidationReport report = new ValidationReport(
@@ -274,22 +278,7 @@ class FirebaseMapperTest {
 
         HydrationPatch patch = mapper.toHydrationPatch(game, report, true, true);
 
-        assertThat(patch.locales().get("en").synced()).isTrue();
-        assertThat(patch.locales().get("en").updatedAt()).isEqualTo(T.toString());
-        assertThat(patch.locales().get("es").synced()).isFalse();
-        assertThat(patch.locales().get("fr").synced()).isFalse();
-    }
-
-    @Test
-    void toHydrationPatch_enLocaleNotSyncedWhenRawgMissing() {
-        AggregatedGame game = new AggregatedGame("Portal", "Portal", "portal",
-                fullDeals(), null, T);
-        ValidationReport report = new ValidationReport(
-                ValidationStatus.PARTIAL, EnumSet.of(GameField.DESCRIPTION), T, null);
-
-        HydrationPatch patch = mapper.toHydrationPatch(game, report, true, true);
-
-        assertThat(patch.locales().get("en").synced()).isFalse();
+        assertThat(patch.toFirestoreMap()).doesNotContainKey("locales");
     }
 
     @Test
@@ -314,7 +303,7 @@ class FirebaseMapperTest {
 
         Map<String, Object> firestoreMap = patch.toFirestoreMap();
 
-        assertThat(firestoreMap).containsOnlyKeys("title", "cheapshark", "rawg", "locales", "validationReport");
+        assertThat(firestoreMap).containsOnlyKeys("title", "cheapshark", "rawg", "validationReport");
         assertThat(firestoreMap.get("title")).isEqualTo("Portal");
     }
 
@@ -365,7 +354,6 @@ class FirebaseMapperTest {
                 .doesNotContainKey("cheapshark")
                 .doesNotContainKey("rawg")
                 .containsEntry("title", "Portal")
-                .containsKey("locales")
                 .containsKey("validationReport");
     }
 

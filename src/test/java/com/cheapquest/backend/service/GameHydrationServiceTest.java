@@ -104,6 +104,45 @@ class GameHydrationServiceTest {
     }
 
     @Test
+    void hydrateAll_marksEnLocaleAsSyncedOnSuccess() {
+        // After a successful hydration the english locale must be
+        // marked as synced via a separate partial update; this keeps
+        // locales.es and locales.fr (owned by the future translation
+        // pipeline) untouched.
+        GameDocumentDto doc = sampleDoc("portal", "Portal");
+        stubPending(doc);
+        when(refreshPolicy.decide(doc, false))
+                .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
+        when(gameLookup.lookupByTitle(eq("Portal"), any()))
+                .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
+        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+
+        service.hydrateAll();
+
+        org.mockito.Mockito.verify(firebaseClient).markLocaleSynced(
+                eq("portal"), eq("en"), any(Instant.class));
+    }
+
+    @Test
+    void hydrateAll_doesNotMarkEnLocaleOnFailure() {
+        // When the hydration throws, the en locale must NOT be
+        // marked synced: the english content is not actually
+        // verified as fresh, so leaving the flag at its previous
+        // value is the right call.
+        GameDocumentDto doc = sampleDoc("portal", "Portal");
+        stubPending(doc);
+        when(refreshPolicy.decide(doc, false))
+                .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
+        when(gameLookup.lookupByTitle(eq("Portal"), any()))
+                .thenThrow(new RuntimeException("Firestore blip"));
+
+        service.hydrateAll();
+
+        org.mockito.Mockito.verify(firebaseClient, org.mockito.Mockito.never())
+                .markLocaleSynced(anyString(), anyString(), any(Instant.class));
+    }
+
+    @Test
     void hydrateAll_countsPartialWhenSomeFieldsMissing() {
         GameDocumentDto doc = sampleDoc("portal", "Portal");
         stubPending(doc);
@@ -837,9 +876,6 @@ class GameHydrationServiceTest {
                 "Portal",
                 CheapsharkBlock.empty(),
                 RawgBlock.empty(),
-                Map.of("es", LocaleBlock.unsynced(),
-                        "en", LocaleBlock.unsynced(),
-                        "fr", LocaleBlock.unsynced()),
                 null);
     }
 
@@ -890,5 +926,66 @@ class GameHydrationServiceTest {
             org.mockito.Mockito.doNothing().when(firebaseClient).removeFromPending(slug);
         }
         when(firebaseClient.readPending()).thenReturn(entries);
+    }
+
+    @Test
+    void recoverStalePending_resetsEntriesOlderThanThreshold() {
+        // Two stale entries (1h and 5h ago) plus a fresh one
+        // (1 minute ago). Only the stale ones are reset.
+        Instant now = Instant.parse("2026-06-30T10:00:00Z");
+        List<PendingDoc> pending = List.of(
+                new PendingDoc("stale1", 2, now.minus(Duration.ofHours(1)), "blip 1"),
+                new PendingDoc("stale2", 3, now.minus(Duration.ofHours(5)), "stuck"),
+                new PendingDoc("fresh", 1, now.minus(Duration.ofMinutes(1)), null));
+        when(firebaseClient.readPending()).thenReturn(pending);
+
+        int recovered = service.recoverStalePending(Duration.ofMinutes(30));
+
+        assertThat(recovered).isEqualTo(2);
+        org.mockito.Mockito.verify(firebaseClient).replacePending(
+                new PendingDoc("stale1", 0, null, null));
+        org.mockito.Mockito.verify(firebaseClient).replacePending(
+                new PendingDoc("stale2", 0, null, null));
+        org.mockito.Mockito.verify(firebaseClient, org.mockito.Mockito.never())
+                .replacePending(org.mockito.ArgumentMatchers.argThat(
+                        p -> p != null && "fresh".equals(p.slug())));
+    }
+
+    @Test
+    void recoverStalePending_leavesNeverAttemptedEntriesUntouched() {
+        // Freshly-enqueued entries have lastAttemptAt == null;
+        // recovery must not touch them even though they would
+        // otherwise be considered "stale" by virtue of being old.
+        Instant now = Instant.parse("2026-06-30T10:00:00Z");
+        List<PendingDoc> pending = List.of(
+                new PendingDoc("never_attempted", 0, null, null));
+        when(firebaseClient.readPending()).thenReturn(pending);
+
+        int recovered = service.recoverStalePending(Duration.ofMinutes(30));
+
+        assertThat(recovered).isZero();
+        org.mockito.Mockito.verify(firebaseClient, org.mockito.Mockito.never())
+                .replacePending(any());
+    }
+
+    @Test
+    void recoverStalePending_returnsZeroWhenQueueIsEmpty() {
+        when(firebaseClient.readPending()).thenReturn(List.of());
+
+        int recovered = service.recoverStalePending(Duration.ofMinutes(30));
+
+        assertThat(recovered).isZero();
+    }
+
+    @Test
+    void recoverStalePending_rejectsNonPositiveThreshold() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> service.recoverStalePending(Duration.ZERO))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("positive");
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> service.recoverStalePending(Duration.ofMinutes(-1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("positive");
     }
 }

@@ -36,11 +36,11 @@ public final class GameLookupService implements GameLookup {
         try {
             return csService.aggregateByName(title);
         } catch (GameNotFoundException e) {
-            log.warn("lookup_cheapshark_not_found title=\"{}\": {}", title, e.getMessage());
+            log.warn("lookup_cheapshark_not_found title=\"{}\": {}", title, e.getMessage(), e);
             return null;
         } catch (RuntimeException e) {
             log.warn("lookup_cheapshark_failed title=\"{}\" err={}: {}",
-                    title, e.getClass().getSimpleName(), e.getMessage());
+                    title, e.getClass().getSimpleName(), e.getMessage(), e);
             return null;
         }
     }
@@ -49,11 +49,11 @@ public final class GameLookupService implements GameLookup {
         try {
             return rawgService.aggregate(title);
         } catch (GameNotFoundException e) {
-            log.warn("lookup_rawg_not_found title=\"{}\": {}", title, e.getMessage());
+            log.warn("lookup_rawg_not_found title=\"{}\": {}", title, e.getMessage(), e);
             return null;
         } catch (RuntimeException e) {
             log.warn("lookup_rawg_failed title=\"{}\" err={}: {}",
-                    title, e.getClass().getSimpleName(), e.getMessage());
+                    title, e.getClass().getSimpleName(), e.getMessage(), e);
             return null;
         }
     }

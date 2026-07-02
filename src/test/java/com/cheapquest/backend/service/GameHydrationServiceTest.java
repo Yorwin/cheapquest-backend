@@ -389,6 +389,37 @@ class GameHydrationServiceTest {
     }
 
     @Test
+    void composeReport_keepsLastFullFetchAtNullOnPartialRefreshWhenExistingIsNull() {
+        // Regression for the bootstrap-then-partial edge case:
+        // a doc has no existing validationReport (fresh bootstrap)
+        // and the cadence decides to refresh only CheapShark. The
+        // composed report must keep lastFullFetchAt=null instead
+        // of fabricating 'now', because no full refresh has
+        // actually happened. The old code used parseOrNow which
+        // fell back to now, producing a misleading timestamp
+        // (e.g. lastFullFetchAt=2031-06-15T12:00:00Z in
+        // /games/portal after the cadence commit).
+        GameDocumentDto doc = docWithNullReport();
+        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        when(refreshPolicy.decide(doc, false))
+                .thenReturn(new RefreshPolicy.RefreshDecision(true, false));
+        when(gameLookup.lookupByTitle(eq("Portal"), any()))
+                .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), null));
+        ArgumentCaptor<ValidationReport> captor = ArgumentCaptor.forClass(ValidationReport.class);
+        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+
+        service.hydrateAll();
+
+        ValidationReport composed = captor.getValue();
+        assertThat(composed.lastFullFetchAt())
+                .as("partial refresh on a bootstrap doc must NOT fabricate a lastFullFetchAt")
+                .isNull();
+        assertThat(composed.lastPartialFetchAt())
+                .as("lastPartialFetchAt is set to 'now' on a partial refresh")
+                .isNotNull();
+    }
+
+    @Test
     void composeReport_carriesForwardNonRefreshedSourceFieldsOnCheapSharkOnlyRefresh() {
         // Doc says half-life-2 has 9 RAWG fields missing from a
         // previous full refresh. We now only refresh CheapShark.

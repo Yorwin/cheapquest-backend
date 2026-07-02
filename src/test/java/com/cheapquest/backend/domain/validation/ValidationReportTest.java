@@ -21,10 +21,17 @@ class ValidationReportTest {
     }
 
     @Test
-    void rejects_null_lastFullFetchAt() {
-        assertThatNullPointerException()
-                .isThrownBy(() -> new ValidationReport(ValidationStatus.COMPLETE, Set.of(), null, null))
-                .withMessageContaining("lastFullFetchAt");
+    void accepts_null_lastFullFetchAt_to_preserve_bootstrap_state() {
+        // Post-fix: lastFullFetchAt is nullable so a partial refresh
+        // on a freshly bootstrapped doc can keep the field null
+        // instead of fabricating a fake 'now' timestamp that would
+        // suggest a full refresh had occurred. See
+        // GameHydrationService.composeReport for the contract.
+        ValidationReport r = new ValidationReport(ValidationStatus.PARTIAL, Set.of(GameField.TRAILER), null, null);
+        assertThat(r.status()).isEqualTo(ValidationStatus.PARTIAL);
+        assertThat(r.missingFields()).containsExactly(GameField.TRAILER);
+        assertThat(r.lastFullFetchAt()).isNull();
+        assertThat(r.lastPartialFetchAt()).isNull();
     }
 
     @Test

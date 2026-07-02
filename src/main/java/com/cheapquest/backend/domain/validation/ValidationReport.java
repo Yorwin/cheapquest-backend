@@ -17,7 +17,6 @@ public record ValidationReport(
 
     public ValidationReport {
         Objects.requireNonNull(status, "status");
-        Objects.requireNonNull(lastFullFetchAt, "lastFullFetchAt");
         missingFields = missingFields == null ? Set.of() : Set.copyOf(missingFields);
     }
 

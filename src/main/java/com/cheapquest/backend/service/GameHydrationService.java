@@ -219,7 +219,7 @@ public final class GameHydrationService {
     /**
      * Apply the per-source cadence to the validation report. A full
      * refresh (both sources) uses the fresh evaluation as-is and
-     * updates {@code lastFullFetchAt}. A partial refresh (one
+     * sets {@code lastFullFetchAt = now}. A partial refresh (one
      * source) merges the fresh evaluation with the existing report:
      * <ul>
      *   <li>fields belonging to a refreshed source are taken from
@@ -234,17 +234,23 @@ public final class GameHydrationService {
      *       complete doc can stay {@code COMPLETE} when the
      *       refreshed source also reports complete.</li>
      * </ul>
-     * Timestamps: a partial refresh updates
-     * {@code lastPartialFetchAt} and preserves the existing
-     * {@code lastFullFetchAt}. The previous values come from the
-     * document we just read; if they are missing (bootstrap case)
-     * we fall back to the current instant so the field is never null.
+     * Timestamps: a full refresh sets
+     * {@code lastFullFetchAt = now} and preserves the existing
+     * {@code lastPartialFetchAt} (which may be null on the very
+     * first full refresh). A partial refresh sets
+     * {@code lastPartialFetchAt = now} and preserves the existing
+     * {@code lastFullFetchAt} <b>verbatim</b> - including null when
+     * the doc was bootstrapped and a full refresh has never
+     * happened. The previous implementation used {@code now} as a
+     * fallback for the partial path, which produced
+     * {@code lastFullFetchAt = now} on a doc that had only ever
+     * been partially refreshed, misleading the next reader into
+     * thinking a full refresh had occurred.
      */
     private ValidationReport composeReport(
             ValidationReportDto existing, ValidationReport fresh,
             RefreshPolicy.RefreshDecision decision) {
         Instant now = Instant.now(clock);
-        Instant previousFull = parseOrNow(existing == null ? null : existing.lastFullFetchAt(), now);
         Instant previousPartial = parseOrNull(existing == null ? null : existing.lastPartialFetchAt());
 
         if (decision.isFullRefresh()) {
@@ -252,6 +258,7 @@ public final class GameHydrationService {
                     fresh.status(), fresh.missingFields(),
                     now, previousPartial);
         }
+        Instant previousFull = parseOrNull(existing == null ? null : existing.lastFullFetchAt());
         Set<GameField> existingMissing = parseMissingFields(
                 existing == null ? null : existing.missingFields());
         Set<GameField> refreshedFields = refreshedSourceFields(decision);
@@ -321,17 +328,6 @@ public final class GameHydrationService {
             }
         }
         return result;
-    }
-
-    private static Instant parseOrNow(String iso, Instant fallback) {
-        if (iso == null) {
-            return fallback;
-        }
-        try {
-            return Instant.parse(iso);
-        } catch (DateTimeParseException e) {
-            return fallback;
-        }
     }
 
     private static Instant parseOrNull(String iso) {

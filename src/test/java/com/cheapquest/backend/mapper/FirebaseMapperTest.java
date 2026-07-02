@@ -204,6 +204,25 @@ class FirebaseMapperTest {
     }
 
     @Test
+    void toValidationReportDto_writesNullWhenLastFullFetchAtIsNull() {
+        // A partial refresh on a freshly bootstrapped doc produces
+        // a report with lastFullFetchAt=null. The mapper must
+        // serialise that as a null string (Firestore stores it as
+        // a null field) rather than throwing on toString().
+        ValidationReport report = new ValidationReport(
+                ValidationStatus.PARTIAL,
+                EnumSet.of(GameField.TRAILER),
+                null,
+                T);
+
+        ValidationReportDto dto = mapper.toValidationReportDto(report);
+
+        assertThat(dto.lastFullFetchAt()).isNull();
+        assertThat(dto.lastPartialFetchAt()).isEqualTo(T.toString());
+        assertThat(dto.missingFields()).containsExactly("TRAILER");
+    }
+
+    @Test
     void toHydrationPatch_containsExpectedFields() {
         AggregatedGame game = new AggregatedGame("Portal", "Portal", "portal",
                 fullDeals(), fullRawg(), T);

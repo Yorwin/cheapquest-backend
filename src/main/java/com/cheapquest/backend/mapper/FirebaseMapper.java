@@ -133,13 +133,16 @@ public final class FirebaseMapper {
         for (GameField f : missing) {
             missingNames.add(f.name());
         }
+        String lastFull = report.lastFullFetchAt() == null
+                ? null
+                : report.lastFullFetchAt().toString();
         String lastPartial = report.lastPartialFetchAt() == null
                 ? null
                 : report.lastPartialFetchAt().toString();
         return new ValidationReportDto(
                 report.status().name(),
                 List.copyOf(missingNames),
-                report.lastFullFetchAt().toString(),
+                lastFull,
                 lastPartial);
     }
 

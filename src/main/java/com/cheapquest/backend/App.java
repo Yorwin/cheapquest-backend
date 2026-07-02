@@ -28,6 +28,7 @@ import com.cheapquest.backend.service.GameLookupService;
 import com.cheapquest.backend.service.GameMerger;
 import com.cheapquest.backend.service.RawgAggregationService;
 import com.cheapquest.backend.service.RefreshPolicy;
+import com.cheapquest.backend.service.ValidationConsistencyChecker;
 import com.cheapquest.backend.service.ValidationService;
 import com.google.cloud.firestore.Firestore;
 import com.google.firebase.FirebaseApp;
@@ -111,6 +112,12 @@ public final class App {
 			return;
 		}
 
+		if ("validate".equals(mode)) {
+			runValidate(firebaseClient);
+			System.out.println("[validate] end");
+			return;
+		}
+
         for (HardcodedGame game : GameFixtures.all()) {
             runCombinedAggregation(service, rawgService, validator, merger, game);
         }
@@ -171,6 +178,29 @@ public final class App {
                 + " durationMs=" + report.durationMs());
         if (!report.failures().isEmpty()) {
             System.out.println("[hydrate] failures=" + report.failures());
+        }
+    }
+
+    private static void runValidate(FirebaseClient firebaseClient) {
+        if (firebaseClient == null) {
+            System.out.println("[validate] ABORT: firebase client not ready");
+            return;
+        }
+        ValidationConsistencyChecker checker = new ValidationConsistencyChecker();
+        java.util.List<com.cheapquest.backend.dto.firebase.GameDocumentDto> docs = new java.util.ArrayList<>();
+        for (var d : firebaseClient.readAll()) {
+            docs.add(d);
+        }
+        System.out.println("[validate] read " + docs.size() + " document(s) from Firestore");
+        List<ValidationConsistencyChecker.Inconsistency> incs = checker.check(docs);
+        int ok = docs.size() - incs.size();
+        System.out.println("[validate] consistent=" + ok + " inconsistent=" + incs.size());
+        for (ValidationConsistencyChecker.Inconsistency inc : incs) {
+            System.out.println("  [validate] INCONSISTENT slug=" + inc.slug()
+                    + " stored_missing=" + inc.storedMissing()
+                    + " actual_missing=" + inc.actualMissing()
+                    + " expected_status=" + inc.expectedStatus()
+                    + " stored_status=" + inc.storedStatus());
         }
     }
 

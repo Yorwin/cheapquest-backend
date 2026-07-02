@@ -180,7 +180,8 @@ public final class GameHydrationService {
         }
 
         ValidationReport composed = composeReport(doc.validationReport(), fresh, decision);
-        HydrationPatch patch = firebaseMapper.toHydrationPatch(merged, composed);
+        HydrationPatch patch = firebaseMapper.toHydrationPatch(
+                merged, composed, decision.refreshDeals(), decision.refreshRawg());
         firebaseClient.update(slug, patch);
         log.info("hydrate_doc_ok slug={} status={} missing={} full_refresh={}",
                 slug, composed.status(), composed.missingFields().size(), decision.isFullRefresh());

@@ -18,6 +18,14 @@ import java.util.Objects;
  * 24h) and {@code refresh.rawg-max-age-days} (default 180d). A missing
  * or malformed {@code fetchedAt} is treated as "never fetched" and
  * therefore always stale.
+ *
+ * <p><b>First-call semantics:</b> a freshly bootstrapped document has
+ * {@code cheapshark.fetchedAt = null} and {@code rawg.fetchedAt = null}
+ * (see {@code FirebaseMapper.toBootstrapDocument}). Both sources are
+ * therefore considered stale on the first {@code hydrate} run after
+ * bootstrap, so the game is fully populated without waiting for the
+ * cadence intervals. The intervals only start governing refresh
+ * frequency from the second run onward, once the timestamps are set.
  */
 public final class RefreshPolicy {
 

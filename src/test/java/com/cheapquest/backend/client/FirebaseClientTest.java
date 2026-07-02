@@ -249,6 +249,56 @@ class FirebaseClientTest {
     }
 
     @Test
+    void update_omitsNullCheapsharkToPreserveExistingBlock() throws Exception {
+        DocumentReference ref = mock(DocumentReference.class);
+        when(gamesCollection.document("slug")).thenReturn(ref);
+        SettableApiFuture<WriteResult> future = SettableApiFuture.create();
+        future.set(mock(WriteResult.class));
+        when(ref.update(anyMap())).thenReturn(future);
+
+        HydrationPatch patch = new HydrationPatch(
+                "X", null, RawgBlock.empty(),
+                Map.of("es", LocaleBlock.unsynced(), "en", LocaleBlock.unsynced(), "fr", LocaleBlock.unsynced()),
+                null);
+        client.update("slug", patch);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(ref).update(captor.capture());
+        assertThat(captor.getValue())
+                .containsEntry("title", "X")
+                .doesNotContainKey("cheapshark")
+                .containsKey("rawg")
+                .containsKey("locales")
+                .containsKey("validationReport");
+    }
+
+    @Test
+    void update_omitsNullRawgToPreserveExistingBlock() throws Exception {
+        DocumentReference ref = mock(DocumentReference.class);
+        when(gamesCollection.document("slug")).thenReturn(ref);
+        SettableApiFuture<WriteResult> future = SettableApiFuture.create();
+        future.set(mock(WriteResult.class));
+        when(ref.update(anyMap())).thenReturn(future);
+
+        HydrationPatch patch = new HydrationPatch(
+                "X", CheapsharkBlock.empty(), null,
+                Map.of("es", LocaleBlock.unsynced(), "en", LocaleBlock.unsynced(), "fr", LocaleBlock.unsynced()),
+                null);
+        client.update("slug", patch);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(ref).update(captor.capture());
+        assertThat(captor.getValue())
+                .containsEntry("title", "X")
+                .containsKey("cheapshark")
+                .doesNotContainKey("rawg")
+                .containsKey("locales")
+                .containsKey("validationReport");
+    }
+
+    @Test
     void update_wrapsExecutionException() {
         DocumentReference ref = mock(DocumentReference.class);
         when(gamesCollection.document("slug")).thenReturn(ref);

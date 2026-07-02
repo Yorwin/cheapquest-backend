@@ -82,7 +82,8 @@ public final class FirebaseMapper {
                 null);
     }
 
-    public HydrationPatch toHydrationPatch(AggregatedGame game, ValidationReport report) {
+    public HydrationPatch toHydrationPatch(AggregatedGame game, ValidationReport report,
+            boolean dealsStale, boolean rawgStale) {
         Instant now = Instant.now(clock);
 
         LocaleBlock enLocale = game.rawg() == null
@@ -93,8 +94,8 @@ public final class FirebaseMapper {
 
         return new HydrationPatch(
                 game.canonicalName(),
-                toCheapsharkBlock(game.cheapShark()),
-                toRawgBlock(game.rawg()),
+                dealsStale ? toCheapsharkBlock(game.cheapShark()) : null,
+                rawgStale ? toRawgBlock(game.rawg()) : null,
                 locales,
                 toValidationReportDto(report));
     }

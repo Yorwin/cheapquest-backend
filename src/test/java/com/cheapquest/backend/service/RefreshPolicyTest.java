@@ -43,6 +43,22 @@ class RefreshPolicyTest {
     }
 
     @Test
+    void decide_firstCallOnBootstrappedDocIsFullRefresh() {
+        RefreshPolicy policy = new RefreshPolicy(Duration.ofHours(24), Duration.ofDays(180), CLOCK);
+        GameDocumentDto doc = GameDocumentDtoFixtures.emptyDoc("new-game", "New Game");
+
+        RefreshPolicy.RefreshDecision decision = policy.decide(doc);
+
+        assertThat(decision.refreshDeals())
+                .as("bootstrapped doc must refresh deals on first call (no waiting for 24h)")
+                .isTrue();
+        assertThat(decision.refreshRawg())
+                .as("bootstrapped doc must refresh RAWG on first call (no waiting for 180d)")
+                .isTrue();
+        assertThat(decision.isFullRefresh()).isTrue();
+    }
+
+    @Test
     void decide_refreshesOnlyDealsWhenDealsStaleButRawgFresh() {
         RefreshPolicy policy = new RefreshPolicy(Duration.ofHours(24), Duration.ofDays(180), CLOCK);
         Instant dealsFetched = NOW.minus(Duration.ofHours(25));

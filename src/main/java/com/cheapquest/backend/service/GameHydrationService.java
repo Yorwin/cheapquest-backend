@@ -4,6 +4,7 @@ import com.cheapquest.backend.client.FirebaseClient;
 import com.cheapquest.backend.domain.AggregatedGame;
 import com.cheapquest.backend.domain.GameDeals;
 import com.cheapquest.backend.domain.rawg.RawgDetails;
+import com.cheapquest.backend.domain.validation.GameField;
 import com.cheapquest.backend.domain.validation.ValidationReport;
 import com.cheapquest.backend.domain.validation.ValidationStatus;
 import com.cheapquest.backend.dto.HydrationReport;
@@ -16,8 +17,10 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -189,9 +192,24 @@ public final class GameHydrationService {
     }
 
     /**
-     * Apply the per-source cadence to the validation report timestamps.
-     * A full refresh (both sources) updates {@code lastFullFetchAt};
-     * a partial refresh (only one source) updates
+     * Apply the per-source cadence to the validation report. A full
+     * refresh (both sources) uses the fresh evaluation as-is and
+     * updates {@code lastFullFetchAt}. A partial refresh (one
+     * source) merges the fresh evaluation with the existing report:
+     * <ul>
+     *   <li>fields belonging to a refreshed source are taken from
+     *       the fresh evaluation - that source just looked at the
+     *       game and is the authority for its own fields;</li>
+     *   <li>fields belonging to a non-refreshed source are carried
+     *       forward from the previous report - we have no new
+     *       information about them, so we neither add them nor
+     *       clear them;</li>
+     *   <li>the status is derived from the merged set, not the
+     *       fresh set, so a partial refresh over a previously
+     *       complete doc can stay {@code COMPLETE} when the
+     *       refreshed source also reports complete.</li>
+     * </ul>
+     * Timestamps: a partial refresh updates
      * {@code lastPartialFetchAt} and preserves the existing
      * {@code lastFullFetchAt}. The previous values come from the
      * document we just read; if they are missing (bootstrap case)
@@ -209,9 +227,75 @@ public final class GameHydrationService {
                     fresh.status(), fresh.missingFields(),
                     now, previousPartial);
         }
+        Set<GameField> existingMissing = parseMissingFields(
+                existing == null ? null : existing.missingFields());
+        Set<GameField> refreshedFields = refreshedSourceFields(decision);
+        Set<GameField> nonRefreshedMissing = new HashSet<>();
+        for (GameField f : existingMissing) {
+            if (!refreshedFields.contains(f)) {
+                nonRefreshedMissing.add(f);
+            }
+        }
+        Set<GameField> refreshedMissing = new HashSet<>();
+        for (GameField f : fresh.missingFields()) {
+            if (refreshedFields.contains(f)) {
+                refreshedMissing.add(f);
+            }
+        }
+        Set<GameField> mergedMissing = new HashSet<>(nonRefreshedMissing);
+        mergedMissing.addAll(refreshedMissing);
+        ValidationStatus status = mergedMissing.isEmpty()
+                ? ValidationStatus.COMPLETE
+                : ValidationStatus.PARTIAL;
         return new ValidationReport(
-                fresh.status(), fresh.missingFields(),
+                status, Set.copyOf(mergedMissing),
                 previousFull, now);
+    }
+
+    /**
+     * The set of fields that the refreshed sources are the authority
+     * for. A field belongs to a source per {@link GameField#source()}.
+     * When a source was not refreshed, its fields are not in this
+     * set and the composer carries the previous report's value
+     * forward for them.
+     */
+    private static Set<GameField> refreshedSourceFields(RefreshPolicy.RefreshDecision decision) {
+        EnumSet<GameField> fields = EnumSet.noneOf(GameField.class);
+        if (decision.refreshDeals()) {
+            fields.add(GameField.STORES);
+        }
+        if (decision.refreshRawg()) {
+            for (GameField f : GameField.values()) {
+                if (f.source() == GameField.Source.RAWG) {
+                    fields.add(f);
+                }
+            }
+        }
+        return fields;
+    }
+
+    /**
+     * Parse the {@code ValidationReportDto.missingFields} string list
+     * back to a {@code Set<GameField>}. Unknown names (e.g. from an
+     * older schema version) are silently ignored so a single bad
+     * value cannot break the hydration of an otherwise valid doc.
+     */
+    private static Set<GameField> parseMissingFields(List<String> names) {
+        if (names == null || names.isEmpty()) {
+            return Set.of();
+        }
+        Set<GameField> result = EnumSet.noneOf(GameField.class);
+        for (String name : names) {
+            if (name == null) {
+                continue;
+            }
+            try {
+                result.add(GameField.valueOf(name));
+            } catch (IllegalArgumentException e) {
+                log.warn("composeReport_unknownMissingField name=\"{}\"", name);
+            }
+        }
+        return result;
     }
 
     private static Instant parseOrNow(String iso, Instant fallback) {

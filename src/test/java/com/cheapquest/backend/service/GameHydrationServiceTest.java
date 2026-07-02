@@ -140,7 +140,14 @@ class GameHydrationServiceTest {
     }
 
     @Test
-    void hydrateAll_writesPartialWhenOnlyCheapSharkRefreshed() {
+    void hydrateAll_writesCompleteWhenOnlyCheapSharkRefreshedAndExistingIsEmpty() {
+        // Doc has no existing validationReport (bootstrap case). A
+        // CheapShark-only refresh on a successful lookup yields no
+        // missing fields: the refreshed source has no deficiencies
+        // and there is no previous report to carry forward. The
+        // composed status is COMPLETE, not PARTIAL. Pre-fix this
+        // test asserted partial=1 because the validator saw
+        // merged.rawg=null and added 9 RAWG fields to missing.
         GameDocumentDto doc = sampleDoc("portal", "Portal");
         when(firebaseClient.readAll()).thenReturn(List.of(doc));
         when(refreshPolicy.decide(doc))
@@ -152,14 +159,19 @@ class GameHydrationServiceTest {
         HydrationReport report = service.hydrateAll();
 
         assertThat(report.processed()).isEqualTo(1);
-        assertThat(report.partial()).isEqualTo(1);
+        assertThat(report.complete()).isEqualTo(1);
+        assertThat(report.partial()).isZero();
         assertThat(report.dealsRefreshed()).isEqualTo(1);
         assertThat(report.rawgRefreshed()).isZero();
         verify(firebaseClient).update(eq("portal"), any(HydrationPatch.class));
     }
 
     @Test
-    void hydrateAll_writesPartialWhenOnlyRawgRefreshed() {
+    void hydrateAll_writesCompleteWhenOnlyRawgRefreshedAndExistingIsEmpty() {
+        // Same shape as the CheapShark-only test but the other side.
+        // A RAWG-only refresh with a successful lookup produces no
+        // RAWG-side deficiencies; there is no previous report to
+        // carry STORES forward from. Status is COMPLETE.
         GameDocumentDto doc = sampleDoc("portal", "Portal");
         when(firebaseClient.readAll()).thenReturn(List.of(doc));
         when(refreshPolicy.decide(doc))
@@ -171,7 +183,8 @@ class GameHydrationServiceTest {
         HydrationReport report = service.hydrateAll();
 
         assertThat(report.processed()).isEqualTo(1);
-        assertThat(report.partial()).isEqualTo(1);
+        assertThat(report.complete()).isEqualTo(1);
+        assertThat(report.partial()).isZero();
         assertThat(report.dealsRefreshed()).isZero();
         assertThat(report.rawgRefreshed()).isEqualTo(1);
         verify(firebaseClient).update(eq("portal"), any(HydrationPatch.class));
@@ -237,9 +250,16 @@ class GameHydrationServiceTest {
 
         HydrationReport report = service.hydrateAll();
 
+        // portal and stardew: full refresh with full data, complete.
+        // half-life-2: RAWG-only refresh on a doc with no existing
+        // validationReport; fresh RAWG is full and there is nothing
+        // to carry forward, so composed status is COMPLETE.
+        // Pre-fix hl2 was counted as PARTIAL because the validator
+        // saw merged.deals=null and marked STORES as missing, which
+        // a RAWG-only refresh cannot evaluate.
         assertThat(report.processed()).isEqualTo(3);
-        assertThat(report.partial()).isEqualTo(1);
-        assertThat(report.complete()).isEqualTo(2);
+        assertThat(report.partial()).isZero();
+        assertThat(report.complete()).isEqualTo(3);
         assertThat(report.dealsRefreshed()).isEqualTo(2);
         assertThat(report.rawgRefreshed()).isEqualTo(3);
         verify(firebaseClient, times(3)).update(anyString(), any(HydrationPatch.class));
@@ -367,6 +387,214 @@ class GameHydrationServiceTest {
         assertThat(composed.lastPartialFetchAt()).isNull();
     }
 
+    @Test
+    void composeReport_carriesForwardNonRefreshedSourceFieldsOnCheapSharkOnlyRefresh() {
+        // Doc says half-life-2 has 9 RAWG fields missing from a
+        // previous full refresh. We now only refresh CheapShark.
+        // The carried-forward set must keep the 9 RAWG fields and
+        // discard them from the fresh evaluation (because we did
+        // not look at RAWG this run). Status: PARTIAL.
+        GameDocumentDto doc = docWithMissingFields("portal", "Portal",
+                List.of("DESCRIPTION", "HEADER_IMAGE", "TRAILER", "GENRES", "TAGS",
+                        "SCREENSHOTS", "RELEASED", "DEVELOPER", "PUBLISHER"));
+        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        when(refreshPolicy.decide(doc))
+                .thenReturn(new RefreshPolicy.RefreshDecision(true, false));
+        when(gameLookup.lookupByTitle(eq("Portal"), any()))
+                .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), null));
+        ArgumentCaptor<ValidationReport> captor = ArgumentCaptor.forClass(ValidationReport.class);
+        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+
+        service.hydrateAll();
+
+        ValidationReport composed = captor.getValue();
+        assertThat(composed.missingFields())
+                .containsExactlyInAnyOrder(
+                        GameField.DESCRIPTION, GameField.HEADER_IMAGE, GameField.TRAILER,
+                        GameField.GENRES, GameField.TAGS, GameField.SCREENSHOTS,
+                        GameField.RELEASED, GameField.DEVELOPER, GameField.PUBLISHER);
+        assertThat(composed.missingFields()).doesNotContain(GameField.STORES);
+        assertThat(composed.status()).isEqualTo(ValidationStatus.PARTIAL);
+    }
+
+    @Test
+    void composeReport_carriesForwardNonRefreshedSourceFieldsOnRawgOnlyRefresh() {
+        // Doc says STORES is missing from a previous full refresh.
+        // We now only refresh RAWG. STORES (CheapShark field) must
+        // be carried forward; the fresh RAWG-only evaluation must
+        // not add or remove RAWG fields in this case because the
+        // fresh RAWG is full. Status: PARTIAL (because STORES is
+        // still in the merged set).
+        GameDocumentDto doc = docWithMissingFields("portal", "Portal", List.of("STORES"));
+        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        when(refreshPolicy.decide(doc))
+                .thenReturn(new RefreshPolicy.RefreshDecision(false, true));
+        when(gameLookup.lookupByTitle(eq("Portal"), any()))
+                .thenReturn(new GameLookup.GameLookupResult(null, sampleRawgAgg()));
+        ArgumentCaptor<ValidationReport> captor = ArgumentCaptor.forClass(ValidationReport.class);
+        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+
+        service.hydrateAll();
+
+        ValidationReport composed = captor.getValue();
+        assertThat(composed.missingFields()).containsExactly(GameField.STORES);
+        assertThat(composed.status()).isEqualTo(ValidationStatus.PARTIAL);
+    }
+
+    @Test
+    void composeReport_usesFreshForRefreshedSourceEvenIfDifferentFromExisting() {
+        // Doc had STORES in missing from a previous full refresh.
+        // We now refresh CheapShark and the lookup succeeds with
+        // offers present. The fresh evaluation says STORES is not
+        // missing, so the merged set must NOT contain STORES. No
+        // other fields are missing either. Status: COMPLETE.
+        GameDocumentDto doc = docWithMissingFields("portal", "Portal", List.of("STORES"));
+        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        when(refreshPolicy.decide(doc))
+                .thenReturn(new RefreshPolicy.RefreshDecision(true, false));
+        when(gameLookup.lookupByTitle(eq("Portal"), any()))
+                .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), null));
+        ArgumentCaptor<ValidationReport> captor = ArgumentCaptor.forClass(ValidationReport.class);
+        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+
+        service.hydrateAll();
+
+        ValidationReport composed = captor.getValue();
+        assertThat(composed.missingFields()).doesNotContain(GameField.STORES);
+        assertThat(composed.missingFields()).isEmpty();
+        assertThat(composed.status()).isEqualTo(ValidationStatus.COMPLETE);
+    }
+
+    @Test
+    void composeReport_addsRefreshedSourceFailureToMissing() {
+        // Doc was COMPLETE. We refresh CheapShark and the lookup
+        // returns a deals with no offers. The fresh evaluation
+        // discovers STORES is missing; the merged set picks it up
+        // because the refreshed source's fields are evaluated from
+        // fresh, not carried. Status: PARTIAL.
+        GameDocumentDto doc = docWithMissingFields("portal", "Portal", List.of());
+        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        when(refreshPolicy.decide(doc))
+                .thenReturn(new RefreshPolicy.RefreshDecision(true, false));
+        when(gameLookup.lookupByTitle(eq("Portal"), any()))
+                .thenReturn(new GameLookup.GameLookupResult(emptyDeals(), null));
+        ArgumentCaptor<ValidationReport> captor = ArgumentCaptor.forClass(ValidationReport.class);
+        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+
+        service.hydrateAll();
+
+        ValidationReport composed = captor.getValue();
+        assertThat(composed.missingFields()).containsExactly(GameField.STORES);
+        assertThat(composed.status()).isEqualTo(ValidationStatus.PARTIAL);
+    }
+
+    @Test
+    void composeReport_usesFreshAsIsOnFullRefresh() {
+        // Full refresh (both sources). The fresh evaluation is the
+        // truth for the whole doc, no merge. The existing report
+        // had [DESCRIPTION, HEADER_IMAGE] as missing from a previous
+        // run; this run re-fetched both sources. The fresh RAWG
+        // data is now complete except for TRAILER (null trailerUrl).
+        // The composed report is [TRAILER] - the previous RAWG
+        // deficiencies are resolved and only the fresh deficiency
+        // remains. STORES was not missing in the existing report and
+        // the fresh deals are full, so STORES does not appear.
+        RawgDetails rawgNoTrailer = RawgDetailsFixtures.full("portal", "Portal")
+                .trailerUrl(null).build();
+        AggregatedGame rawgAgg = new AggregatedGame("Portal", "Portal", "portal",
+                null, rawgNoTrailer, T);
+        GameDocumentDto doc = docWithMissingFields("portal", "Portal",
+                List.of("DESCRIPTION", "HEADER_IMAGE"));
+        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        when(refreshPolicy.decide(doc))
+                .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
+        when(gameLookup.lookupByTitle(eq("Portal"), any()))
+                .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), rawgAgg));
+        ArgumentCaptor<ValidationReport> captor = ArgumentCaptor.forClass(ValidationReport.class);
+        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+
+        service.hydrateAll();
+
+        ValidationReport composed = captor.getValue();
+        assertThat(composed.missingFields()).containsExactly(GameField.TRAILER);
+        assertThat(composed.status()).isEqualTo(ValidationStatus.PARTIAL);
+    }
+
+    @Test
+    void composeReport_preservesNonRefreshedMissingFieldAcrossFullRefresh() {
+        // Regression for the half-life-2 scenario: the existing
+        // report has 9 RAWG fields missing. A full refresh (both
+        // sources) yields fresh data that is COMPLETE for both.
+        // The composed report must reflect the fresh truth: empty
+        // missingFields, status COMPLETE, lastFullFetchAt updated,
+        // and STORES never appears because we re-fetched it too.
+        GameDocumentDto doc = docWithMissingFields("portal", "Portal",
+                List.of("DESCRIPTION", "HEADER_IMAGE", "TRAILER", "GENRES", "TAGS",
+                        "SCREENSHOTS", "RELEASED", "DEVELOPER", "PUBLISHER"));
+        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        when(refreshPolicy.decide(doc))
+                .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
+        when(gameLookup.lookupByTitle(eq("Portal"), any()))
+                .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
+        ArgumentCaptor<ValidationReport> captor = ArgumentCaptor.forClass(ValidationReport.class);
+        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+
+        service.hydrateAll();
+
+        ValidationReport composed = captor.getValue();
+        assertThat(composed.missingFields()).isEmpty();
+        assertThat(composed.status()).isEqualTo(ValidationStatus.COMPLETE);
+    }
+
+    @Test
+    void composeReport_handlesNullExistingReportOnPartialRefresh() {
+        // validationReportDto is null in the doc (bootstrap
+        // scenario where no full fetch has run yet). parseMissingFields
+        // must accept the null without throwing and produce an
+        // empty set. The composed report then reflects only the
+        // fresh evaluation filtered to the refreshed source.
+        GameDocumentDto doc = docWithNullReport();
+        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        when(refreshPolicy.decide(doc))
+                .thenReturn(new RefreshPolicy.RefreshDecision(true, false));
+        when(gameLookup.lookupByTitle(eq("Portal"), any()))
+                .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), null));
+        ArgumentCaptor<ValidationReport> captor = ArgumentCaptor.forClass(ValidationReport.class);
+        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+
+        service.hydrateAll();
+
+        ValidationReport composed = captor.getValue();
+        assertThat(composed.missingFields()).isEmpty();
+        assertThat(composed.status()).isEqualTo(ValidationStatus.COMPLETE);
+    }
+
+    @Test
+    void composeReport_ignoresUnknownMissingFieldNamesInExistingReport() {
+        // Defensive: an old schema version may have a field name
+        // that has been renamed. parseMissingFields must skip it
+        // without aborting the hydration.
+        GameDocumentDto doc = docWithMissingFields("portal", "Portal",
+                List.of("STORES", "LEGACY_FIELD", "TRAILER"));
+        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        when(refreshPolicy.decide(doc))
+                .thenReturn(new RefreshPolicy.RefreshDecision(false, true));
+        when(gameLookup.lookupByTitle(eq("Portal"), any()))
+                .thenReturn(new GameLookup.GameLookupResult(null, sampleRawgAgg()));
+        ArgumentCaptor<ValidationReport> captor = ArgumentCaptor.forClass(ValidationReport.class);
+        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+
+        service.hydrateAll();
+
+        ValidationReport composed = captor.getValue();
+        // STORES is in CHEAPSHARK and the decision is refreshRawg=true,
+        // so STORES is carried forward. TRAILER is in RAWG and we
+        // refreshed RAWG with full data, so fresh.missingFields
+        // does not contain TRAILER and it is dropped. LEGACY_FIELD
+        // is silently ignored.
+        assertThat(composed.missingFields()).containsExactly(GameField.STORES);
+    }
+
     private static GameDocumentDto sampleDoc(String slug, String title) {
         return GameDocumentDtoFixtures.emptyDoc(slug, title);
     }
@@ -377,6 +605,24 @@ class GameHydrationServiceTest {
                 base.title(), base.slug(), base.originalLanguage(), base.active(), base.addedAt(),
                 base.cheapshark(), base.rawg(), base.locales(),
                 new ValidationReportDto("PARTIAL", List.of("TRAILER"), lastFull, lastPartial));
+    }
+
+    private static GameDocumentDto docWithMissingFields(String slug, String title, List<String> missingFields) {
+        GameDocumentDto base = sampleDoc(slug, title);
+        return new GameDocumentDto(
+                base.title(), base.slug(), base.originalLanguage(), base.active(), base.addedAt(),
+                base.cheapshark(), base.rawg(), base.locales(),
+                new ValidationReportDto("PARTIAL", missingFields, T.toString(), null));
+    }
+
+    private static GameDocumentDto docWithNullReport() {
+        return sampleDoc("portal", "Portal");
+    }
+
+    private static GameDeals emptyDeals() {
+        return new GameDeals(
+                "82", "Portal", "Portal", "PORTAL",
+                "https://example.com/thumb.jpg", null, 0, null, List.of(), T);
     }
 
     private static HydrationPatch samplePatch() {

@@ -47,7 +47,33 @@ public final class RefreshPolicy {
     }
 
     public RefreshDecision decide(GameDocumentDto doc) {
+        return decide(doc, false);
+    }
+
+    /**
+     * Decide which sources to refresh for a given document.
+     *
+     * <p>When {@code force} is {@code true} both sources are always
+     * refreshed regardless of the per-source cadence. This is the
+     * implementation behind the {@code -Dapp.refresh.force=true} flag
+     * and is used by the smoke / repair flows where a full re-fetch
+     * is required (e.g. a doc was bootstrapped, the validation
+     * report was corrupted, or a previously-merged-but-partial
+     * document needs to be re-evaluated from scratch).
+     *
+     * <p>When {@code force} is {@code false} the per-source
+     * thresholds are consulted: CheapShark is stale when
+     * {@code cheapshark.fetchedAt} is null/malformed or older than
+     * {@code dealsMaxAge}; RAWG is stale when
+     * {@code rawg.fetchedAt} is null/malformed or older than
+     * {@code rawgMaxAge}. See the class Javadoc for first-call
+     * semantics.
+     */
+    public RefreshDecision decide(GameDocumentDto doc, boolean force) {
         Objects.requireNonNull(doc, "doc");
+        if (force) {
+            return new RefreshDecision(true, true);
+        }
         Instant now = Instant.now(clock);
         return new RefreshDecision(
                 isStale(cheapsharkFetchedAt(doc), now, dealsMaxAge),

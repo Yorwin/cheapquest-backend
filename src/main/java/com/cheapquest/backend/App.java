@@ -101,8 +101,12 @@ public final class App {
 
 		if ("hydrate".equals(mode)) {
 			GameLookup gameLookup = new GameLookupService(service, rawgService);
-			RefreshPolicy refreshPolicy = buildRefreshPolicy(props, clock);
-			runHydrate(firebaseClient, gameLookup, validator, merger, refreshPolicy, clock);
+			boolean force = Boolean.parseBoolean(System.getProperty("app.refresh.force", "false"));
+			RefreshPolicy refreshPolicy = new RefreshPolicy(props, clock);
+			if (force) {
+				System.out.println("[hydrate] app.refresh.force=true -> ignoring per-source cadence");
+			}
+			runHydrate(firebaseClient, gameLookup, validator, merger, refreshPolicy, force, clock);
 			System.out.println("[hydrate] end");
 			return;
 		}
@@ -147,7 +151,7 @@ public final class App {
     private static void runHydrate(FirebaseClient firebaseClient,
             GameLookup gameLookup,
             ValidationService validator, GameMerger merger,
-            RefreshPolicy refreshPolicy, Clock clock) {
+            RefreshPolicy refreshPolicy, boolean force, Clock clock) {
         if (firebaseClient == null) {
             System.out.println("[hydrate] ABORT: firebase client not ready");
             return;
@@ -155,7 +159,7 @@ public final class App {
         GameHydrationService hydration = new GameHydrationService(
                 firebaseClient, new FirebaseMapper(),
                 gameLookup, merger, validator, refreshPolicy, clock);
-        com.cheapquest.backend.dto.HydrationReport report = hydration.hydrateAll();
+        com.cheapquest.backend.dto.HydrationReport report = hydration.hydrateAll(force);
         System.out.println("[hydrate] processed=" + report.processed()
                 + " complete=" + report.complete()
                 + " partial=" + report.partial()
@@ -168,15 +172,6 @@ public final class App {
         if (!report.failures().isEmpty()) {
             System.out.println("[hydrate] failures=" + report.failures());
         }
-    }
-
-    private static RefreshPolicy buildRefreshPolicy(AppProperties props, Clock clock) {
-        boolean force = Boolean.parseBoolean(System.getProperty("app.refresh.force", "false"));
-        if (force) {
-            System.out.println("[hydrate] app.refresh.force=true -> ignoring per-source cadence");
-            return new RefreshPolicy(Duration.ofDays(365 * 100), Duration.ofDays(365 * 100), clock);
-        }
-        return new RefreshPolicy(props, clock);
     }
 
     private static List<CheapSharkStoreDto> loadStoresOrAbort(CheapSharkClient client) {

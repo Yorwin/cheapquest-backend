@@ -154,6 +154,46 @@ class RefreshPolicyTest {
 
         assertThatThrownBy(() -> policy.decide(null))
                 .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> policy.decide(null, false))
+                .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void decide_forceTrueReturnsFullRefreshEvenWhenBothFresh() {
+        // Pre-fix: -Dapp.refresh.force=true was implemented by
+        // setting 100-year thresholds, which is a hack and breaks
+        // when the doc was just hydrated (fetchedAt=now < 100y).
+        // Post-fix: the force flag is a separate decision input
+        // and unconditionally returns (true, true).
+        RefreshPolicy policy = new RefreshPolicy(Duration.ofHours(24), Duration.ofDays(180), CLOCK);
+        GameDocumentDto doc = docWithFetchedAt(NOW, NOW);
+
+        RefreshPolicy.RefreshDecision decision = policy.decide(doc, true);
+
+        assertThat(decision.refreshDeals()).isTrue();
+        assertThat(decision.refreshRawg()).isTrue();
+        assertThat(decision.isFullRefresh()).isTrue();
+    }
+
+    @Test
+    void decide_forceFalseFallsBackToCadence() {
+        // Sanity check that the new boolean param doesn't change
+        // the default cadence behaviour.
+        RefreshPolicy policy = new RefreshPolicy(Duration.ofHours(24), Duration.ofDays(180), CLOCK);
+        GameDocumentDto doc = docWithFetchedAt(NOW, NOW);
+
+        RefreshPolicy.RefreshDecision decision = policy.decide(doc, false);
+
+        assertThat(decision.nothingToDo()).isTrue();
+    }
+
+    @Test
+    void decide_singleArgOverloadDefaultsToForceFalse() {
+        RefreshPolicy policy = new RefreshPolicy(Duration.ofHours(24), Duration.ofDays(180), CLOCK);
+        GameDocumentDto doc = docWithFetchedAt(NOW, NOW);
+
+        assertThat(policy.decide(doc))
+                .isEqualTo(policy.decide(doc, false));
     }
 
     private static GameDocumentDto docWithFetchedAt(Instant dealsFetchedAt, Instant rawgFetchedAt) {

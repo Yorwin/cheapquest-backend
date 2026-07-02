@@ -72,9 +72,20 @@ public final class GameHydrationService {
     }
 
     public HydrationReport hydrateAll() {
+        return hydrateAll(false);
+    }
+
+    /**
+     * Run the hydration pipeline over every game document. When
+     * {@code force} is {@code true} the per-source cadence is
+     * bypassed and every doc is fully re-fetched; when false the
+     * per-source cadence decides which sources to refresh per doc.
+     * See {@link RefreshPolicy#decide(GameDocumentDto, boolean)}.
+     */
+    public HydrationReport hydrateAll(boolean force) {
         long start = clock.millis();
         Iterable<GameDocumentDto> docs = firebaseClient.readAll();
-        log.info("hydrate_all_start paginating=true");
+        log.info("hydrate_all_start paginating=true force={}", force);
 
         int processed = 0;
         int complete = 0;
@@ -89,7 +100,7 @@ public final class GameHydrationService {
         for (GameDocumentDto doc : docs) {
             processed++;
             try {
-                HydrationOutcome outcome = hydrateInternal(doc);
+                HydrationOutcome outcome = hydrateInternal(doc, force);
                 switch (outcome.status()) {
                     case COMPLETE -> complete++;
                     case PARTIAL -> partial++;
@@ -120,13 +131,22 @@ public final class GameHydrationService {
     }
 
     public boolean hydrateOne(String slug) {
+        return hydrateOne(slug, false);
+    }
+
+    /**
+     * Hydrate a single game document by its slug. When
+     * {@code force} is {@code true} the per-source cadence is
+     * bypassed; when false the cadence is consulted.
+     */
+    public boolean hydrateOne(String slug, boolean force) {
         GameDocumentDto doc = firebaseClient.readOne(slug).orElse(null);
         if (doc == null) {
             log.warn("hydrate_one_missing slug={}", slug);
             return false;
         }
         try {
-            HydrationOutcome outcome = hydrateInternal(doc);
+            HydrationOutcome outcome = hydrateInternal(doc, force);
             log.info("hydrate_one_done slug={} outcome={} deals_refreshed={} rawg_refreshed={}",
                     slug, outcome.status(), outcome.dealsRefreshed(), outcome.rawgRefreshed());
             return outcome.status() != ValidationStatus.EMPTY;
@@ -138,6 +158,10 @@ public final class GameHydrationService {
     }
 
     private HydrationOutcome hydrateInternal(GameDocumentDto doc) {
+        return hydrateInternal(doc, false);
+    }
+
+    private HydrationOutcome hydrateInternal(GameDocumentDto doc, boolean force) {
         String slug = doc.slug();
         String title = doc.title();
         if (slug == null || title == null) {
@@ -145,9 +169,10 @@ public final class GameHydrationService {
             return HydrationOutcome.emptyOutcome();
         }
 
-        RefreshPolicy.RefreshDecision decision = refreshPolicy.decide(doc);
-        log.info("hydrate_doc_decision slug={} refresh_deals={} refresh_rawg={} full={}",
-                slug, decision.refreshDeals(), decision.refreshRawg(), decision.isFullRefresh());
+        RefreshPolicy.RefreshDecision decision = refreshPolicy.decide(doc, force);
+        log.info("hydrate_doc_decision slug={} refresh_deals={} refresh_rawg={} full={} force={}",
+                slug, decision.refreshDeals(), decision.refreshRawg(),
+                decision.isFullRefresh(), force);
 
         if (decision.nothingToDo()) {
             log.info("hydrate_doc_skip slug={} reason=fresh", slug);

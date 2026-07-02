@@ -2,6 +2,7 @@ package com.cheapquest.backend.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -78,7 +79,7 @@ class GameHydrationServiceTest {
     void hydrateAll_writesPatchWhenBothSourcesSucceed() {
         GameDocumentDto doc = sampleDoc("portal", "Portal");
         when(firebaseClient.readAll()).thenReturn(List.of(doc));
-        when(refreshPolicy.decide(doc))
+        when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
@@ -102,7 +103,7 @@ class GameHydrationServiceTest {
     void hydrateAll_countsPartialWhenSomeFieldsMissing() {
         GameDocumentDto doc = sampleDoc("portal", "Portal");
         when(firebaseClient.readAll()).thenReturn(List.of(doc));
-        when(refreshPolicy.decide(doc))
+        when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         RawgDetails rawgNoTrailer = RawgDetailsFixtures.full("portal", "Portal")
                 .trailerUrl(null).build();
@@ -124,7 +125,7 @@ class GameHydrationServiceTest {
     void hydrateAll_doesNotWriteWhenValidationIsEmpty() {
         GameDocumentDto doc = sampleDoc("portal", "Portal");
         when(firebaseClient.readAll()).thenReturn(List.of(doc));
-        when(refreshPolicy.decide(doc))
+        when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(GameLookup.GameLookupResult.empty());
@@ -150,7 +151,7 @@ class GameHydrationServiceTest {
         // merged.rawg=null and added 9 RAWG fields to missing.
         GameDocumentDto doc = sampleDoc("portal", "Portal");
         when(firebaseClient.readAll()).thenReturn(List.of(doc));
-        when(refreshPolicy.decide(doc))
+        when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, false));
         when(gameLookup.lookupByTitle(eq("Portal"), eq(EnumSet.of(GameLookup.Source.CHEAPSHARK))))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), null));
@@ -174,7 +175,7 @@ class GameHydrationServiceTest {
         // carry STORES forward from. Status is COMPLETE.
         GameDocumentDto doc = sampleDoc("portal", "Portal");
         when(firebaseClient.readAll()).thenReturn(List.of(doc));
-        when(refreshPolicy.decide(doc))
+        when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(false, true));
         when(gameLookup.lookupByTitle(eq("Portal"), eq(EnumSet.of(GameLookup.Source.RAWG))))
                 .thenReturn(new GameLookup.GameLookupResult(null, sampleRawgAgg()));
@@ -194,7 +195,7 @@ class GameHydrationServiceTest {
     void hydrateAll_skipsFreshDoc() {
         GameDocumentDto doc = sampleDoc("portal", "Portal");
         when(firebaseClient.readAll()).thenReturn(List.of(doc));
-        when(refreshPolicy.decide(doc))
+        when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(false, false));
 
         HydrationReport report = service.hydrateAll();
@@ -213,7 +214,7 @@ class GameHydrationServiceTest {
     void hydrateAll_countsFailureWhenFirestoreUpdateThrows() {
         GameDocumentDto doc = sampleDoc("portal", "Portal");
         when(firebaseClient.readAll()).thenReturn(List.of(doc));
-        when(refreshPolicy.decide(doc))
+        when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
@@ -234,11 +235,11 @@ class GameHydrationServiceTest {
         GameDocumentDto hl2 = sampleDoc("half-life-2", "Half-Life 2");
         GameDocumentDto stardew = sampleDoc("stardew-valley", "Stardew Valley");
         when(firebaseClient.readAll()).thenReturn(List.of(portal, hl2, stardew));
-        when(refreshPolicy.decide(portal))
+        when(refreshPolicy.decide(portal, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
-        when(refreshPolicy.decide(hl2))
+        when(refreshPolicy.decide(hl2, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(false, true));
-        when(refreshPolicy.decide(stardew))
+        when(refreshPolicy.decide(stardew, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
@@ -295,7 +296,7 @@ class GameHydrationServiceTest {
     @Test
     void hydrateOne_returnsFalseWhenBothSourcesFail() {
         when(firebaseClient.readOne("portal")).thenReturn(java.util.Optional.of(sampleDoc("portal", "Portal")));
-        when(refreshPolicy.decide(any()))
+        when(refreshPolicy.decide(any(), anyBoolean()))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(GameLookup.GameLookupResult.empty());
@@ -306,7 +307,7 @@ class GameHydrationServiceTest {
     @Test
     void hydrateOne_returnsTrueAndWritesPatchOnSuccess() {
         when(firebaseClient.readOne("portal")).thenReturn(java.util.Optional.of(sampleDoc("portal", "Portal")));
-        when(refreshPolicy.decide(any()))
+        when(refreshPolicy.decide(any(), anyBoolean()))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
@@ -320,7 +321,7 @@ class GameHydrationServiceTest {
     void hydrateAll_passesCorrectTitleAndSourcesToLookup() {
         GameDocumentDto doc = sampleDoc("portal", "Portal");
         when(firebaseClient.readAll()).thenReturn(List.of(doc));
-        when(refreshPolicy.decide(doc))
+        when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, false));
         when(gameLookup.lookupByTitle(eq("Portal"), eq(EnumSet.of(GameLookup.Source.CHEAPSHARK))))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), null));
@@ -336,7 +337,7 @@ class GameHydrationServiceTest {
         Instant previousFull = T.minus(Duration.ofDays(1));
         GameDocumentDto doc = docWithReport(previousFull.toString(), null);
         when(firebaseClient.readAll()).thenReturn(List.of(doc));
-        when(refreshPolicy.decide(doc))
+        when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, false));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), null));
@@ -355,7 +356,7 @@ class GameHydrationServiceTest {
         Instant previousPartial = T.minus(Duration.ofDays(30));
         GameDocumentDto doc = docWithReport(T.toString(), previousPartial.toString());
         when(firebaseClient.readAll()).thenReturn(List.of(doc));
-        when(refreshPolicy.decide(doc))
+        when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
@@ -373,7 +374,7 @@ class GameHydrationServiceTest {
     void composeReport_usesNowWhenExistingTimestampsMissing() {
         GameDocumentDto doc = docWithReport(null, null);
         when(firebaseClient.readAll()).thenReturn(List.of(doc));
-        when(refreshPolicy.decide(doc))
+        when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
@@ -398,7 +399,7 @@ class GameHydrationServiceTest {
                 List.of("DESCRIPTION", "HEADER_IMAGE", "TRAILER", "GENRES", "TAGS",
                         "SCREENSHOTS", "RELEASED", "DEVELOPER", "PUBLISHER"));
         when(firebaseClient.readAll()).thenReturn(List.of(doc));
-        when(refreshPolicy.decide(doc))
+        when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, false));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), null));
@@ -427,7 +428,7 @@ class GameHydrationServiceTest {
         // still in the merged set).
         GameDocumentDto doc = docWithMissingFields("portal", "Portal", List.of("STORES"));
         when(firebaseClient.readAll()).thenReturn(List.of(doc));
-        when(refreshPolicy.decide(doc))
+        when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(false, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(null, sampleRawgAgg()));
@@ -450,7 +451,7 @@ class GameHydrationServiceTest {
         // other fields are missing either. Status: COMPLETE.
         GameDocumentDto doc = docWithMissingFields("portal", "Portal", List.of("STORES"));
         when(firebaseClient.readAll()).thenReturn(List.of(doc));
-        when(refreshPolicy.decide(doc))
+        when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, false));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), null));
@@ -474,7 +475,7 @@ class GameHydrationServiceTest {
         // fresh, not carried. Status: PARTIAL.
         GameDocumentDto doc = docWithMissingFields("portal", "Portal", List.of());
         when(firebaseClient.readAll()).thenReturn(List.of(doc));
-        when(refreshPolicy.decide(doc))
+        when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, false));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(emptyDeals(), null));
@@ -506,7 +507,7 @@ class GameHydrationServiceTest {
         GameDocumentDto doc = docWithMissingFields("portal", "Portal",
                 List.of("DESCRIPTION", "HEADER_IMAGE"));
         when(firebaseClient.readAll()).thenReturn(List.of(doc));
-        when(refreshPolicy.decide(doc))
+        when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), rawgAgg));
@@ -532,7 +533,7 @@ class GameHydrationServiceTest {
                 List.of("DESCRIPTION", "HEADER_IMAGE", "TRAILER", "GENRES", "TAGS",
                         "SCREENSHOTS", "RELEASED", "DEVELOPER", "PUBLISHER"));
         when(firebaseClient.readAll()).thenReturn(List.of(doc));
-        when(refreshPolicy.decide(doc))
+        when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
@@ -555,7 +556,7 @@ class GameHydrationServiceTest {
         // fresh evaluation filtered to the refreshed source.
         GameDocumentDto doc = docWithNullReport();
         when(firebaseClient.readAll()).thenReturn(List.of(doc));
-        when(refreshPolicy.decide(doc))
+        when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, false));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), null));
@@ -577,7 +578,7 @@ class GameHydrationServiceTest {
         GameDocumentDto doc = docWithMissingFields("portal", "Portal",
                 List.of("STORES", "LEGACY_FIELD", "TRAILER"));
         when(firebaseClient.readAll()).thenReturn(List.of(doc));
-        when(refreshPolicy.decide(doc))
+        when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(false, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(null, sampleRawgAgg()));

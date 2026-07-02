@@ -18,6 +18,7 @@ import com.cheapquest.backend.dto.rawg.RawgPublisherDto;
 import com.cheapquest.backend.dto.rawg.RawgScreenshotDto;
 import com.cheapquest.backend.dto.rawg.RawgTagDto;
 import com.cheapquest.backend.util.StringNormalize;
+import com.cheapquest.backend.util.StringUtils;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -70,11 +71,11 @@ public final class RawgMapper {
     public String pickTrailerUrl(RawgGameDto detail, List<RawgMovieDto> movies) {
         if (detail != null && detail.clip() != null) {
             String video = detail.clip().video();
-            if (video != null && !video.isBlank()) {
+            if (!StringUtils.isBlank(video)) {
                 return video;
             }
             String clip = detail.clip().clip();
-            if (clip != null && !clip.isBlank()) {
+            if (!StringUtils.isBlank(clip)) {
                 return clip;
             }
         }
@@ -82,11 +83,11 @@ public final class RawgMapper {
             RawgMovieDto first = movies.get(0);
             if (first.data() != null) {
                 String max = first.data().max();
-                if (max != null && !max.isBlank()) {
+                if (!StringUtils.isBlank(max)) {
                     return max;
                 }
                 String full = first.data().full();
-                if (full != null && !full.isBlank()) {
+                if (!StringUtils.isBlank(full)) {
                     return full;
                 }
             }

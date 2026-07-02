@@ -10,6 +10,7 @@ import com.cheapquest.backend.dto.rawg.RawgScreenshotDto;
 import com.cheapquest.backend.exception.ApiUnavailableException;
 import com.cheapquest.backend.exception.GameNotFoundException;
 import com.cheapquest.backend.mapper.RawgMapper;
+import com.cheapquest.backend.util.StringUtils;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -43,7 +44,7 @@ public final class RawgAggregationService {
     }
 
     public AggregatedGame aggregate(String name, int searchPageSize) {
-        if (name == null || name.isBlank()) {
+        if (StringUtils.isBlank(name)) {
             throw new GameNotFoundException("empty name");
         }
         Instant start = Instant.now(clock);

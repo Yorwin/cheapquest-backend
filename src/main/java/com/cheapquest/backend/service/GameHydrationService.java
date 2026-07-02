@@ -1,6 +1,7 @@
 package com.cheapquest.backend.service;
 
 import com.cheapquest.backend.client.FirebaseClient;
+import com.cheapquest.backend.config.AppProperties;
 import com.cheapquest.backend.domain.AggregatedGame;
 import com.cheapquest.backend.domain.GameDeals;
 import com.cheapquest.backend.domain.rawg.RawgDetails;
@@ -8,13 +9,15 @@ import com.cheapquest.backend.domain.validation.GameField;
 import com.cheapquest.backend.domain.validation.ValidationReport;
 import com.cheapquest.backend.domain.validation.ValidationStatus;
 import com.cheapquest.backend.dto.HydrationReport;
+import com.cheapquest.backend.dto.firebase.FailedDoc;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
 import com.cheapquest.backend.dto.firebase.HydrationPatch;
+import com.cheapquest.backend.dto.firebase.PendingDoc;
 import com.cheapquest.backend.dto.firebase.ValidationReportDto;
 import com.cheapquest.backend.mapper.FirebaseMapper;
+import com.cheapquest.backend.util.InstantUtils;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -26,25 +29,31 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Orchestrates the read-then-enrich-then-write cycle for every
- * game document in Firestore:
+ * game document in the {@code pending} queue:
  * <ol>
- *   <li>read all docs (or one by slug)</li>
- *   <li>for each: ask {@link RefreshPolicy} which sources are stale</li>
- *   <li>delegate the (subset of) source lookups to {@link GameLookup}</li>
- *   <li>merge and validate</li>
+ *   <li>read the {@code pending} collection (one doc per slug
+ *       the cron is expected to process);</li>
+ *   <li>for each, read the corresponding {@code games/{slug}}
+ *       document and ask {@link RefreshPolicy} which sources
+ *       are stale;</li>
+ *   <li>delegate the (subset of) source lookups to {@link GameLookup};</li>
+ *   <li>merge and validate;</li>
  *   <li>build a partial Firestore patch and {@code update} the
  *       document with the new cheapshark, rawg, locales.en and
  *       validationReport blocks; the {@code lastFullFetchAt} /
  *       {@code lastPartialFetchAt} timestamps in the report are
- *       updated per the cadence decision</li>
+ *       updated per the cadence decision;</li>
+ *   <li>on success, remove the slug from {@code pending};</li>
+ *   <li>on failure, increment the attempt counter on the pending
+ *       doc; when the counter reaches {@code maxAttempts} the
+ *       slug is moved to the {@code failed} DLQ.</li>
  * </ol>
  *
- * <p>If both sources are fresh the doc is left untouched and the
- * outcome is {@link ValidationStatus#SKIPPED}. If both sources fail
- * the report is {@code EMPTY} and the document is also left
- * untouched. A subsequent retry will see the same state and the
- * operator can decide what to do (typically nothing until the
- * upstream APIs are reachable again).
+ * <p>The {@code failed} move happens after the per-doc update
+ * has been attempted (or skipped) so a slug that consistently
+ * produces an empty report (e.g. the game no longer exists in
+ * the upstream APIs) eventually lands in the DLQ rather than
+ * re-running the lookup on every cron tick.
  */
 public final class GameHydrationService {
 
@@ -57,11 +66,20 @@ public final class GameHydrationService {
     private final ValidationService validator;
     private final RefreshPolicy refreshPolicy;
     private final Clock clock;
+    private final int maxAttempts;
 
     public GameHydrationService(FirebaseClient firebaseClient, FirebaseMapper firebaseMapper,
             GameLookup gameLookup,
             GameMerger merger, ValidationService validator,
             RefreshPolicy refreshPolicy, Clock clock) {
+        this(firebaseClient, firebaseMapper, gameLookup, merger, validator,
+                refreshPolicy, clock, 3);
+    }
+
+    public GameHydrationService(FirebaseClient firebaseClient, FirebaseMapper firebaseMapper,
+            GameLookup gameLookup,
+            GameMerger merger, ValidationService validator,
+            RefreshPolicy refreshPolicy, Clock clock, int maxAttempts) {
         this.firebaseClient = Objects.requireNonNull(firebaseClient, "firebaseClient");
         this.firebaseMapper = Objects.requireNonNull(firebaseMapper, "firebaseMapper");
         this.gameLookup = Objects.requireNonNull(gameLookup, "gameLookup");
@@ -69,6 +87,22 @@ public final class GameHydrationService {
         this.validator = Objects.requireNonNull(validator, "validator");
         this.refreshPolicy = Objects.requireNonNull(refreshPolicy, "refreshPolicy");
         this.clock = Objects.requireNonNull(clock, "clock");
+        if (maxAttempts < 1) {
+            throw new IllegalArgumentException("maxAttempts must be >= 1, got " + maxAttempts);
+        }
+        this.maxAttempts = maxAttempts;
+    }
+
+    /**
+     * Convenience overload that wires {@code maxAttempts} from
+     * {@link AppProperties#refreshMaxRetries()}.
+     */
+    public static GameHydrationService fromProperties(FirebaseClient firebaseClient,
+            FirebaseMapper firebaseMapper, GameLookup gameLookup, GameMerger merger,
+            ValidationService validator, RefreshPolicy refreshPolicy, Clock clock,
+            AppProperties props) {
+        return new GameHydrationService(firebaseClient, firebaseMapper, gameLookup, merger,
+                validator, refreshPolicy, clock, props.refreshMaxRetries());
     }
 
     public HydrationReport hydrateAll() {
@@ -76,16 +110,27 @@ public final class GameHydrationService {
     }
 
     /**
-     * Run the hydration pipeline over every game document. When
-     * {@code force} is {@code true} the per-source cadence is
-     * bypassed and every doc is fully re-fetched; when false the
-     * per-source cadence decides which sources to refresh per doc.
-     * See {@link RefreshPolicy#decide(GameDocumentDto, boolean)}.
+     * Run the hydration pipeline over the {@code pending}
+     * queue. When {@code force} is {@code true} the per-source
+     * cadence is bypassed and every doc is fully re-fetched;
+     * when false the per-source cadence decides which sources
+     * to refresh per doc. See
+     * {@link RefreshPolicy#decide(GameDocumentDto, boolean)}.
+     *
+     * <p>For each pending entry the corresponding
+     * {@code games/{slug}} doc is loaded. The hydration is
+     * treated as a "failure" (counts toward the 3-strike
+     * move-to-failed) when the lookup throws, the update
+     * throws, or the resulting report is
+     * {@link ValidationStatus#EMPTY}. A "success" (COMPLETE,
+     * PARTIAL, SKIPPED) removes the slug from the pending
+     * queue; the next cron tick will not pick it up again
+     * unless the operator re-enqueues it.
      */
     public HydrationReport hydrateAll(boolean force) {
         long start = clock.millis();
-        Iterable<GameDocumentDto> docs = firebaseClient.readAll();
-        log.info("hydrate_all_start paginating=true force={}", force);
+        List<PendingDoc> pending = firebaseClient.readPending();
+        log.info("hydrate_all_start pending_count={} force={}", pending.size(), force);
 
         int processed = 0;
         int complete = 0;
@@ -95,39 +140,99 @@ public final class GameHydrationService {
         int failed = 0;
         int dealsRefreshed = 0;
         int rawgRefreshed = 0;
+        int movedToFailed = 0;
         List<String> failures = new ArrayList<>();
+        List<String> movedToFailedList = new ArrayList<>();
 
-        for (GameDocumentDto doc : docs) {
+        for (PendingDoc entry : pending) {
+            String slug = entry.slug();
             processed++;
             try {
-                HydrationOutcome outcome = hydrateInternal(doc, force);
-                switch (outcome.status()) {
+                HydrationResult result = hydratePendingEntry(entry, force);
+                switch (result.outcome.status()) {
                     case COMPLETE -> complete++;
                     case PARTIAL -> partial++;
                     case EMPTY -> empty++;
                     case SKIPPED -> skipped++;
                 }
-                if (outcome.dealsRefreshed()) dealsRefreshed++;
-                if (outcome.rawgRefreshed()) rawgRefreshed++;
+                if (result.outcome.dealsRefreshed()) dealsRefreshed++;
+                if (result.outcome.rawgRefreshed()) rawgRefreshed++;
+                if (result.movedToFailed) {
+                    movedToFailed++;
+                    movedToFailedList.add(slug);
+                }
             } catch (RuntimeException e) {
                 log.error("hydrate_doc_failed slug={} err={}: {}",
-                        doc.slug(), e.getClass().getSimpleName(), e.getMessage());
-                failures.add(doc.slug() == null ? "<null-slug>" : doc.slug());
-                failed++;
+                        slug, e.getClass().getSimpleName(), e.getMessage());
+                HydrationResult r = recordFailureAndMaybeMoveToFailed(entry,
+                        e.getClass().getSimpleName() + ": " + e.getMessage());
+                if (r.movedToFailed) {
+                    movedToFailed++;
+                    movedToFailedList.add(slug);
+                } else {
+                    failures.add(slug == null ? "<null-slug>" : slug);
+                    failed++;
+                }
             }
         }
 
         long durationMs = clock.millis() - start;
         HydrationReport report = new HydrationReport(
                 processed, complete, partial, empty, skipped, failed,
-                dealsRefreshed, rawgRefreshed, durationMs,
-                List.copyOf(failures));
+                dealsRefreshed, rawgRefreshed, movedToFailed, durationMs,
+                List.copyOf(failures), List.copyOf(movedToFailedList));
         log.info("hydrate_all_done processed={} complete={} partial={} empty={} skipped={} "
-                        + "failed={} deals_refreshed={} rawg_refreshed={} durationMs={}",
+                        + "failed={} deals_refreshed={} rawg_refreshed={} moved_to_failed={} durationMs={}",
                 report.processed(), report.complete(), report.partial(),
                 report.empty(), report.skipped(), report.failed(),
-                report.dealsRefreshed(), report.rawgRefreshed(), report.durationMs());
+                report.dealsRefreshed(), report.rawgRefreshed(),
+                report.movedToFailed(), report.durationMs());
         return report;
+    }
+
+    /**
+     * Hydrate one pending entry: load the game doc, run the
+     * pipeline, and update the pending/failed collections as
+     * appropriate. The "is this a failure" decision lives here
+     * for the EMPTY outcome (a logical failure, not an
+     * exception); the outer {@code hydrateAll} loop handles the
+     * exception case so the bookkeeping only runs once.
+     */
+    private HydrationResult hydratePendingEntry(PendingDoc entry, boolean force) {
+        String slug = entry.slug();
+        GameDocumentDto doc = firebaseClient.readOne(slug).orElse(null);
+        if (doc == null) {
+            log.warn("hydrate_pending_missing slug={} reason=game_doc_gone", slug);
+            recordFailureAndMaybeMoveToFailed(entry, "game document gone");
+            return new HydrationResult(HydrationOutcome.emptyOutcome(), false);
+        }
+        HydrationOutcome outcome = hydrateInternal(doc, force);
+        if (outcome.status() == ValidationStatus.EMPTY) {
+            log.warn("hydrate_doc_empty slug={} reason=both_sources_failed", slug);
+            return recordFailureAndMaybeMoveToFailed(entry, "both sources returned empty");
+        }
+        firebaseClient.removeFromPending(slug);
+        return new HydrationResult(outcome, false);
+    }
+
+    private HydrationResult recordFailureAndMaybeMoveToFailed(PendingDoc entry, String error) {
+        int newAttempts = entry.attempts() + 1;
+        if (newAttempts >= maxAttempts) {
+            Instant now = Instant.now(clock);
+            FailedDoc failed = new FailedDoc(
+                    entry.slug(), newAttempts,
+                    entry.lastAttemptAt() == null ? now : entry.lastAttemptAt(),
+                    now, error);
+            firebaseClient.moveToFailed(failed);
+            log.warn("hydrate_doc_moved_to_failed slug={} attempts={} last_error=\"{}\"",
+                    entry.slug(), newAttempts, error);
+            return new HydrationResult(HydrationOutcome.emptyOutcome(), true);
+        }
+        firebaseClient.recordPendingFailure(entry.slug(), newAttempts, Instant.now(clock), error);
+        return new HydrationResult(HydrationOutcome.emptyOutcome(), false);
+    }
+
+    private record HydrationResult(HydrationOutcome outcome, boolean movedToFailed) {
     }
 
     public boolean hydrateOne(String slug) {
@@ -155,10 +260,6 @@ public final class GameHydrationService {
                     slug, e.getClass().getSimpleName(), e.getMessage());
             return false;
         }
-    }
-
-    private HydrationOutcome hydrateInternal(GameDocumentDto doc) {
-        return hydrateInternal(doc, false);
     }
 
     private HydrationOutcome hydrateInternal(GameDocumentDto doc, boolean force) {
@@ -251,16 +352,20 @@ public final class GameHydrationService {
             ValidationReportDto existing, ValidationReport fresh,
             RefreshPolicy.RefreshDecision decision) {
         Instant now = Instant.now(clock);
-        Instant previousPartial = parseOrNull(existing == null ? null : existing.lastPartialFetchAt());
+        Instant previousPartial = InstantUtils.parseOrNull(existing == null ? null : existing.lastPartialFetchAt());
 
         if (decision.isFullRefresh()) {
             return new ValidationReport(
                     fresh.status(), fresh.missingFields(),
                     now, previousPartial);
         }
-        Instant previousFull = parseOrNull(existing == null ? null : existing.lastFullFetchAt());
-        Set<GameField> existingMissing = parseMissingFields(
+        Instant previousFull = InstantUtils.parseOrNull(existing == null ? null : existing.lastFullFetchAt());
+        GameField.ParseResult parsed = GameField.parseAll(
                 existing == null ? null : existing.missingFields());
+        if (!parsed.unknown().isEmpty()) {
+            log.warn("composeReport_unknownMissingField names={}", parsed.unknown());
+        }
+        Set<GameField> existingMissing = parsed.fields();
         Set<GameField> refreshedFields = refreshedSourceFields(decision);
         Set<GameField> nonRefreshedMissing = new HashSet<>();
         for (GameField f : existingMissing) {
@@ -304,41 +409,6 @@ public final class GameHydrationService {
             }
         }
         return fields;
-    }
-
-    /**
-     * Parse the {@code ValidationReportDto.missingFields} string list
-     * back to a {@code Set<GameField>}. Unknown names (e.g. from an
-     * older schema version) are silently ignored so a single bad
-     * value cannot break the hydration of an otherwise valid doc.
-     */
-    private static Set<GameField> parseMissingFields(List<String> names) {
-        if (names == null || names.isEmpty()) {
-            return Set.of();
-        }
-        Set<GameField> result = EnumSet.noneOf(GameField.class);
-        for (String name : names) {
-            if (name == null) {
-                continue;
-            }
-            try {
-                result.add(GameField.valueOf(name));
-            } catch (IllegalArgumentException e) {
-                log.warn("composeReport_unknownMissingField name=\"{}\"", name);
-            }
-        }
-        return result;
-    }
-
-    private static Instant parseOrNull(String iso) {
-        if (iso == null) {
-            return null;
-        }
-        try {
-            return Instant.parse(iso);
-        } catch (DateTimeParseException e) {
-            return null;
-        }
     }
 
     private record HydrationOutcome(ValidationStatus status, boolean dealsRefreshed, boolean rawgRefreshed) {

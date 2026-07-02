@@ -7,6 +7,7 @@ import com.cheapquest.backend.dto.rawg.RawgListResponseDto;
 import com.cheapquest.backend.dto.rawg.RawgMovieDto;
 import com.cheapquest.backend.dto.rawg.RawgScreenshotDto;
 import com.cheapquest.backend.exception.ApiUnavailableException;
+import com.cheapquest.backend.util.StringUtils;
 import com.cheapquest.backend.util.Urls;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -42,7 +43,7 @@ public final class RawgClient {
     }
 
     public List<RawgGameDto> searchByName(String name, int pageSize) {
-        if (name == null || name.isBlank()) {
+        if (StringUtils.isBlank(name)) {
             return List.of();
         }
         String url = baseUrl + SEARCH_PATH
@@ -54,7 +55,7 @@ public final class RawgClient {
     }
 
     public Optional<RawgGameDto> getDetails(String slugOrId) {
-        if (slugOrId == null || slugOrId.isBlank()) {
+        if (StringUtils.isBlank(slugOrId)) {
             return Optional.empty();
         }
         String url = buildDetailsUrl(slugOrId);
@@ -87,7 +88,7 @@ public final class RawgClient {
     }
 
     private <T> List<T> getSubList(String slugOrId, String suffix, Class<T> elementType, String label) {
-        if (slugOrId == null || slugOrId.isBlank()) {
+        if (StringUtils.isBlank(slugOrId)) {
             return List.of();
         }
         String url = buildSubUrl(slugOrId, suffix);

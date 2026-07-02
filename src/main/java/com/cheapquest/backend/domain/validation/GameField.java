@@ -1,5 +1,9 @@
 package com.cheapquest.backend.domain.validation;
 
+import java.util.EnumSet;
+import java.util.LinkedHashSet;
+import java.util.Set;
+
 /**
  * Single field-level deficiency that the future employee-facing UI will
  * surface so a missing piece of data can be located and re-fetched or
@@ -34,6 +38,51 @@ public enum GameField {
 
     public Source source() {
         return source;
+    }
+
+    /**
+     * Outcome of {@link #parseAll(Iterable)}: the recognised fields
+     * plus the names that did not map to any enum value. Unknown
+     * names are returned (not thrown) so callers can decide
+     * whether to log, surface, or ignore them. An older schema
+     * version may legitimately contain a renamed value; flagging
+     * it as a hard error would break a hydration that is
+     * otherwise valid.
+     */
+    public record ParseResult(Set<GameField> fields, Set<String> unknown) {
+        public static final ParseResult EMPTY = new ParseResult(Set.of(), Set.of());
+
+        public ParseResult {
+            fields = Set.copyOf(fields);
+            unknown = Set.copyOf(unknown);
+        }
+    }
+
+    /**
+     * Convert a list of stored field names (the shape persisted in
+     * {@code validationReport.missingFields}) back to a set of
+     * {@link GameField}. {@code null} entries and unknown names
+     * are tolerated; the former are skipped, the latter are
+     * reported in {@link ParseResult#unknown()} so the caller can
+     * log a schema-migration warning.
+     */
+    public static ParseResult parseAll(Iterable<String> names) {
+        if (names == null) {
+            return ParseResult.EMPTY;
+        }
+        EnumSet<GameField> fields = EnumSet.noneOf(GameField.class);
+        Set<String> unknown = new LinkedHashSet<>();
+        for (String name : names) {
+            if (name == null) {
+                continue;
+            }
+            try {
+                fields.add(GameField.valueOf(name));
+            } catch (IllegalArgumentException e) {
+                unknown.add(name);
+            }
+        }
+        return new ParseResult(fields, unknown);
     }
 
     /**

@@ -28,6 +28,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class FirebaseMapperTest {
 
@@ -36,10 +37,9 @@ class FirebaseMapperTest {
 
     private final Gson gson = new GsonBuilder()
             .disableHtmlEscaping()
-            .registerTypeAdapter(java.time.Instant.class, new FirebaseMapper.InstantTypeAdapter())
             .create();
     private final Clock clock = Clock.fixed(T, ZoneOffset.UTC);
-    private final FirebaseMapper mapper = new FirebaseMapper(gson, clock);
+    private final FirebaseMapper mapper = new FirebaseMapper(clock);
 
     @Test
     void toSlug_simpleTitle() {
@@ -167,9 +167,8 @@ class FirebaseMapperTest {
         assertThat(block.synced()).isTrue();
         assertThat(block.fetchedAt()).isEqualTo(T.toString());
         assertThat(block.data()).isNotNull();
-        assertThat(block.data()).containsKey("slug");
-        assertThat(block.data().get("slug")).isEqualTo("portal");
-        assertThat(block.data().get("name")).isEqualTo("Portal");
+        assertThat(block.data().slug()).isEqualTo("portal");
+        assertThat(block.data().name()).isEqualTo("Portal");
     }
 
     @Test
@@ -368,6 +367,44 @@ class FirebaseMapperTest {
                 .containsEntry("title", "Portal")
                 .containsKey("locales")
                 .containsKey("validationReport");
+    }
+
+    @Test
+    void toRawgBlock_emits_typed_document_dto() {
+        // The data block on Firestore is now a RawgDocumentDto (typed
+        // record), not a free-form map. Every field the
+        // ValidationConsistencyChecker needs to evaluate the
+        // missing-fields set is present by construction.
+        RawgDetails rawg = RawgDetailsFixtures.full("portal", "Portal").build();
+        RawgBlock block = mapper.toRawgBlock(rawg);
+
+        assertThat(block.data()).isNotNull();
+        assertThat(block.data().description()).isEqualTo(rawg.description());
+        assertThat(block.data().descriptionRaw()).isEqualTo(rawg.descriptionRaw());
+        assertThat(block.data().headerImage()).isEqualTo(rawg.headerImage());
+        assertThat(block.data().trailerUrl()).isEqualTo(rawg.trailerUrl());
+        assertThat(block.data().released()).isEqualTo(rawg.released());
+        assertThat(block.data().genres()).hasSize(rawg.genres().size());
+        assertThat(block.data().tags()).hasSize(rawg.tags().size());
+        assertThat(block.data().screenshots()).hasSize(rawg.screenshots().size());
+        assertThat(block.data().developers()).hasSize(rawg.developers().size());
+        assertThat(block.data().publishers()).hasSize(rawg.publishers().size());
+        assertThat(block.data().fetchedAt()).isEqualTo(rawg.fetchedAt().toString());
+    }
+
+    @Test
+    void rawgBlock_data_survives_gson_round_trip() {
+        // Sanity check: the typed record round-trips through GSON
+        // with the field names a Firestore document would carry. A
+        // rename of any field in RawgDetails is now a compile error
+        // (this test only catches GSON coercion surprises like int
+        // turning into double).
+        RawgDetails rawg = RawgDetailsFixtures.full("portal", "Portal").build();
+        RawgBlock block = mapper.toRawgBlock(rawg);
+        com.cheapquest.backend.dto.firebase.RawgDocumentDto back = gson.fromJson(
+                gson.toJsonTree(block.data()),
+                com.cheapquest.backend.dto.firebase.RawgDocumentDto.class);
+        assertThat(back).isEqualTo(block.data());
     }
 
     private static GameDeals fullDeals() {

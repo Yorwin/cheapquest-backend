@@ -13,13 +13,10 @@ import com.cheapquest.backend.dto.firebase.HydrationPatch;
 import com.cheapquest.backend.dto.firebase.LocaleBlock;
 import com.cheapquest.backend.dto.firebase.OfferDto;
 import com.cheapquest.backend.dto.firebase.RawgBlock;
+import com.cheapquest.backend.dto.firebase.RawgDocumentDto;
 import com.cheapquest.backend.dto.firebase.ValidationReportDto;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.google.gson.TypeAdapter;
-import com.google.gson.stream.JsonReader;
-import com.google.gson.stream.JsonWriter;
-import java.io.IOException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -49,22 +46,28 @@ public final class FirebaseMapper {
             LOCALE_EN, LocaleBlock.unsynced(),
             LOCALE_FR, LocaleBlock.unsynced());
 
-    private final Gson gson;
     private final Clock clock;
 
     public FirebaseMapper() {
-        this(buildDefaultGson(), Clock.systemUTC());
+        this(Clock.systemUTC());
     }
 
-    public FirebaseMapper(Gson gson, Clock clock) {
-        this.gson = gson;
+    public FirebaseMapper(Clock clock) {
         this.clock = clock;
     }
 
-    private static Gson buildDefaultGson() {
+    /**
+     * Canonical {@link Gson} instance used by the external-API
+     * clients (CheapShark, RAWG). HTML escaping is disabled so
+     * URLs and HTML fragments are preserved verbatim. The
+     * Firestore mapper does not use this {@link Gson} directly
+     * anymore: DTOs are produced by record constructors and
+     * deserialised by the Firestore SDK's own GSON-backed
+     * {@code toObject}, so the round-trip is fully typed.
+     */
+    public static Gson newGson() {
         return new GsonBuilder()
                 .disableHtmlEscaping()
-                .registerTypeAdapter(Instant.class, new InstantTypeAdapter())
                 .create();
     }
 
@@ -123,8 +126,37 @@ public final class FirebaseMapper {
         if (rawg == null) {
             return new RawgBlock(false, null, null);
         }
-        Map<String, Object> dataMap = rawgDetailsToMap(rawg);
-        return new RawgBlock(true, rawg.fetchedAt().toString(), dataMap);
+        return new RawgBlock(true, rawg.fetchedAt().toString(), toDocumentDto(rawg));
+    }
+
+    private static RawgDocumentDto toDocumentDto(RawgDetails rawg) {
+        return new RawgDocumentDto(
+                rawg.slug(),
+                rawg.name(),
+                rawg.nameOriginal(),
+                rawg.released(),
+                rawg.description(),
+                rawg.descriptionRaw(),
+                rawg.headerImage(),
+                rawg.trailerUrl(),
+                rawg.website(),
+                rawg.rating(),
+                rawg.ratingTop(),
+                rawg.metacritic(),
+                rawg.additionsCount(),
+                rawg.creatorsCount(),
+                rawg.moviesCount(),
+                rawg.screenshotsCount(),
+                rawg.developers(),
+                rawg.publishers(),
+                rawg.genres(),
+                rawg.tags(),
+                rawg.platforms(),
+                rawg.parentPlatforms(),
+                rawg.dlcs(),
+                rawg.creators(),
+                rawg.screenshots(),
+                rawg.fetchedAt().toString());
     }
 
     public ValidationReportDto toValidationReportDto(ValidationReport report) {
@@ -169,29 +201,5 @@ public final class FirebaseMapper {
                 o.retailPrice(),
                 o.savings(),
                 o.dealUrl());
-    }
-
-    private Map<String, Object> rawgDetailsToMap(RawgDetails rawg) {
-        return gson.fromJson(gson.toJsonTree(rawg), Map.class);
-    }
-
-    static final class InstantTypeAdapter extends TypeAdapter<Instant> {
-        @Override
-        public void write(JsonWriter out, Instant value) throws IOException {
-            if (value == null) {
-                out.nullValue();
-            } else {
-                out.value(value.toString());
-            }
-        }
-
-        @Override
-        public Instant read(JsonReader in) throws IOException {
-            if (in.peek() == com.google.gson.stream.JsonToken.NULL) {
-                in.nextNull();
-                return null;
-            }
-            return Instant.parse(in.nextString());
-        }
     }
 }

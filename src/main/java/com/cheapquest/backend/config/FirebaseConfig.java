@@ -1,5 +1,6 @@
 package com.cheapquest.backend.config;
 
+import com.cheapquest.backend.util.StringUtils;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
@@ -39,9 +40,9 @@ public final class FirebaseConfig {
         }
         String credentialsPath = props.firebaseCredentialsPath();
         String projectId = props.firebaseProjectId();
-        if (isBlank(credentialsPath) || isBlank(projectId)) {
+        if (StringUtils.isBlank(credentialsPath) || StringUtils.isBlank(projectId)) {
             log.warn("firebase_init_skipped reason=missing_config projectId_present={} credentials_path_present={}",
-                    !isBlank(projectId), !isBlank(credentialsPath));
+                    !StringUtils.isBlank(projectId), !StringUtils.isBlank(credentialsPath));
             return false;
         }
         Path path = Paths.get(credentialsPath);
@@ -59,7 +60,7 @@ public final class FirebaseConfig {
             return true;
         } catch (Exception e) {
             log.error("firebase_init_failed path={} error={}: {}",
-                    credentialsPath, e.getClass().getSimpleName(), e.getMessage());
+                    credentialsPath, e.getClass().getSimpleName(), e.getMessage(), e);
             return false;
         }
     }
@@ -71,9 +72,5 @@ public final class FirebaseConfig {
         } catch (IllegalStateException e) {
             return false;
         }
-    }
-
-    private static boolean isBlank(String s) {
-        return s == null || s.isBlank();
     }
 }

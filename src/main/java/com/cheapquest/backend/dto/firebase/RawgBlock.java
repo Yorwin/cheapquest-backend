@@ -1,17 +1,18 @@
 package com.cheapquest.backend.dto.firebase;
 
-import java.util.Map;
-
 /**
- * The {@code rawg} sub-object of a game document. {@code data} is the
- * rawg details payload kept as a generic map (the RAWG DTO has 25+ fields
- * and the frontend may need any of them; mirroring them all into a typed
- * record would just be a maintenance burden for no current benefit).
+ * The {@code rawg} sub-object of a game document. {@code data} is a
+ * typed projection of the RAWG payload, not a free-form map: a
+ * rename in {@link com.cheapquest.backend.domain.rawg.RawgDetails}
+ * is a compile error here, so the Firestore schema cannot drift
+ * silently. See {@link RawgDocumentDto} for the field-by-field
+ * shape and the rationale for the differences from
+ * {@code RawgDetails} (string timestamp, boxed counts).
  */
 public record RawgBlock(
         Boolean synced,
         String fetchedAt,
-        Map<String, Object> data) {
+        RawgDocumentDto data) {
 
     public static RawgBlock empty() {
         return new RawgBlock(false, null, null);

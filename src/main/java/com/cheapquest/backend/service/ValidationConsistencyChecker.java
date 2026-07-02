@@ -4,12 +4,10 @@ import com.cheapquest.backend.domain.validation.GameField;
 import com.cheapquest.backend.domain.validation.ValidationStatus;
 import com.cheapquest.backend.dto.firebase.CheapsharkBlock;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
+import com.cheapquest.backend.dto.firebase.RawgDocumentDto;
 import com.cheapquest.backend.dto.firebase.ValidationReportDto;
 import java.util.ArrayList;
-import java.util.EnumSet;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import org.slf4j.Logger;
@@ -98,80 +96,36 @@ public final class ValidationConsistencyChecker {
     /**
      * Reproduce {@link ValidationService#evaluate} against the
      * persisted data blocks. The rules are identical to the
-     * writer-side check, so a hydration that ends with this
-     * method's output as the report is by construction consistent.
+     * writer-side check (both delegate to {@link MissingFieldRules}),
+     * so a hydration that ends with this method's output as the
+     * report is by construction consistent. Reads through the
+     * typed {@link RawgDocumentDto} so a missing field is
+     * {@code null} and the rule engine treats it as "missing"
+     * without any string-key lookup.
      */
     static Set<GameField> computeActualMissing(GameDocumentDto doc) {
-        EnumSet<GameField> missing = EnumSet.noneOf(GameField.class);
-        Map<String, Object> data = doc.rawg() == null ? null : doc.rawg().data();
+        RawgDocumentDto data = doc.rawg() == null ? null : doc.rawg().data();
         CheapsharkBlock cheap = doc.cheapshark();
-
-        if (!hasNonBlankString(data, "description")
-                && !hasNonBlankString(data, "descriptionRaw")) {
-            missing.add(GameField.DESCRIPTION);
-        }
-        if (!hasNonBlankString(data, "headerImage")) {
-            missing.add(GameField.HEADER_IMAGE);
-        }
-        if (!hasNonBlankString(data, "trailerUrl")) {
-            missing.add(GameField.TRAILER);
-        }
-        if (!hasNonEmptyList(data, "genres")) {
-            missing.add(GameField.GENRES);
-        }
-        if (!hasNonEmptyList(data, "tags")) {
-            missing.add(GameField.TAGS);
-        }
-        if (!hasNonEmptyList(data, "screenshots")) {
-            missing.add(GameField.SCREENSHOTS);
-        }
-        if (cheap == null || cheap.offerCount() == null || cheap.offerCount() == 0) {
-            missing.add(GameField.STORES);
-        }
-        if (!hasNonBlankString(data, "released")) {
-            missing.add(GameField.RELEASED);
-        }
-        if (!hasNonEmptyList(data, "developers")) {
-            missing.add(GameField.DEVELOPER);
-        }
-        if (!hasNonEmptyList(data, "publishers")) {
-            missing.add(GameField.PUBLISHER);
-        }
-        return missing;
+        MissingFieldRules.Snapshot snap = new MissingFieldRules.Snapshot(
+                data == null ? null : data.description(),
+                data == null ? null : data.descriptionRaw(),
+                data == null ? null : data.headerImage(),
+                data == null ? null : data.trailerUrl(),
+                data == null ? null : data.released(),
+                data == null ? null : data.genres(),
+                data == null ? null : data.tags(),
+                data == null ? null : data.screenshots(),
+                data == null ? null : data.developers(),
+                data == null ? null : data.publishers(),
+                cheap == null ? null : cheap.offerCount());
+        return MissingFieldRules.evaluate(snap);
     }
 
     private static Set<GameField> parseStoredMissing(ValidationReportDto report) {
-        if (report == null || report.missingFields() == null) {
+        if (report == null) {
             return Set.of();
         }
-        Set<GameField> result = new LinkedHashSet<>();
-        for (String name : report.missingFields()) {
-            if (name == null) {
-                continue;
-            }
-            try {
-                result.add(GameField.valueOf(name));
-            } catch (IllegalArgumentException e) {
-                // unknown / renamed field: skip, do not flag as missing
-            }
-        }
-        return Set.copyOf(result);
-    }
-
-    private static boolean hasNonBlankString(Map<String, Object> data, String key) {
-        if (data == null) {
-            return false;
-        }
-        Object value = data.get(key);
-        return value instanceof String s && !s.isBlank();
-    }
-
-    private static boolean hasNonEmptyList(Map<String, Object> data, String key) {
-        if (data == null) {
-            return false;
-        }
-        Object value = data.get(key);
-        return value instanceof List<?> list && !list.isEmpty();
+        return GameField.parseAll(report.missingFields()).fields();
     }
 
     public record Inconsistency(

@@ -128,6 +128,14 @@ public final class AppProperties {
         return props.getProperty("firestore.collection.games-path", "games");
     }
 
+    public String firestoreCollectionPendingPath() {
+        return props.getProperty("firestore.collection.pending-path", "pending");
+    }
+
+    public String firestoreCollectionFailedPath() {
+        return props.getProperty("firestore.collection.failed-path", "failed");
+    }
+
     public int firestoreReadPageSize() {
         return Integer.parseInt(props.getProperty("firestore.read-page-size", "300"));
     }

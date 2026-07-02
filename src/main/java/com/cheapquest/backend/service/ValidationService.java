@@ -7,7 +7,6 @@ import com.cheapquest.backend.domain.validation.GameField;
 import com.cheapquest.backend.domain.validation.ValidationReport;
 import java.time.Clock;
 import java.time.Instant;
-import java.util.EnumSet;
 import java.util.Objects;
 import java.util.Set;
 import org.slf4j.Logger;
@@ -53,45 +52,20 @@ public final class ValidationService {
     }
 
     private static Set<GameField> evaluateMissing(AggregatedGame game) {
-        EnumSet<GameField> missing = EnumSet.noneOf(GameField.class);
         RawgDetails rawg = game.rawg();
         GameDeals cheap = game.cheapShark();
-
-        if (isBlank(rawg == null ? null : rawg.description())
-                && isBlank(rawg == null ? null : rawg.descriptionRaw())) {
-            missing.add(GameField.DESCRIPTION);
-        }
-        if (isBlank(rawg == null ? null : rawg.headerImage())) {
-            missing.add(GameField.HEADER_IMAGE);
-        }
-        if (isBlank(rawg == null ? null : rawg.trailerUrl())) {
-            missing.add(GameField.TRAILER);
-        }
-        if (rawg == null || rawg.genres().isEmpty()) {
-            missing.add(GameField.GENRES);
-        }
-        if (rawg == null || rawg.tags().isEmpty()) {
-            missing.add(GameField.TAGS);
-        }
-        if (rawg == null || rawg.screenshots().isEmpty()) {
-            missing.add(GameField.SCREENSHOTS);
-        }
-        if (cheap == null || cheap.offerCount() == 0) {
-            missing.add(GameField.STORES);
-        }
-        if (rawg == null || isBlank(rawg.released())) {
-            missing.add(GameField.RELEASED);
-        }
-        if (rawg == null || rawg.developers().isEmpty()) {
-            missing.add(GameField.DEVELOPER);
-        }
-        if (rawg == null || rawg.publishers().isEmpty()) {
-            missing.add(GameField.PUBLISHER);
-        }
-        return missing;
-    }
-
-    private static boolean isBlank(String s) {
-        return s == null || s.isBlank();
+        MissingFieldRules.Snapshot snap = new MissingFieldRules.Snapshot(
+                rawg == null ? null : rawg.description(),
+                rawg == null ? null : rawg.descriptionRaw(),
+                rawg == null ? null : rawg.headerImage(),
+                rawg == null ? null : rawg.trailerUrl(),
+                rawg == null ? null : rawg.released(),
+                rawg == null ? null : rawg.genres(),
+                rawg == null ? null : rawg.tags(),
+                rawg == null ? null : rawg.screenshots(),
+                rawg == null ? null : rawg.developers(),
+                rawg == null ? null : rawg.publishers(),
+                cheap == null ? null : cheap.offerCount());
+        return MissingFieldRules.evaluate(snap);
     }
 }

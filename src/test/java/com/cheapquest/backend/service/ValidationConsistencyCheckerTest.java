@@ -8,12 +8,14 @@ import com.cheapquest.backend.dto.firebase.CheapsharkBlock;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
 import com.cheapquest.backend.dto.firebase.LocaleBlock;
 import com.cheapquest.backend.dto.firebase.RawgBlock;
+import com.cheapquest.backend.dto.firebase.RawgDocumentDto;
 import com.cheapquest.backend.dto.firebase.ValidationReportDto;
+import com.cheapquest.backend.fixtures.RawgDocumentDtoFixtures;
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 
 class ValidationConsistencyCheckerTest {
@@ -41,7 +43,7 @@ class ValidationConsistencyCheckerTest {
     @Test
     void consistent_partial_when_only_trailer_missing() {
         GameDocumentDto base = fullDoc("portal");
-        GameDocumentDto noTrailer = docWithData(base, withoutKey("trailerUrl"));
+        GameDocumentDto noTrailer = docWithData(base, edit(b -> b.trailerUrl(null)));
         GameDocumentDto withReport = docWithReport(noTrailer, "PARTIAL", List.of("TRAILER"), FETCHED_AT, null);
         List<ValidationConsistencyChecker.Inconsistency> incs = checker.check(List.of(withReport));
         assertThat(incs).isEmpty();
@@ -50,13 +52,11 @@ class ValidationConsistencyCheckerTest {
     @Test
     void consistent_partial_when_multiple_fields_missing() {
         GameDocumentDto base = fullDoc("portal");
-        GameDocumentDto slim = docWithData(base, data -> {
-            data.remove("trailerUrl");
-            data.remove("description");
-            data.remove("descriptionRaw");
-            data.put("screenshots", List.of());
-            return data;
-        });
+        GameDocumentDto slim = docWithData(base, edit(b -> b
+                .description(null)
+                .descriptionRaw(null)
+                .trailerUrl(null)
+                .screenshots(List.of())));
         GameDocumentDto withReport = docWithReport(slim, "PARTIAL",
                 List.of("DESCRIPTION", "TRAILER", "SCREENSHOTS"), FETCHED_AT, null);
         List<ValidationConsistencyChecker.Inconsistency> incs = checker.check(List.of(withReport));
@@ -88,7 +88,7 @@ class ValidationConsistencyCheckerTest {
         // generated on a partial refresh that did not evaluate
         // it. Stored says nothing is missing; actual is {TRAILER}.
         GameDocumentDto base = fullDoc("portal");
-        GameDocumentDto noTrailer = docWithData(base, withoutKey("trailerUrl"));
+        GameDocumentDto noTrailer = docWithData(base, edit(b -> b.trailerUrl(null)));
         GameDocumentDto withReport = docWithReport(noTrailer, "COMPLETE", List.of(), FETCHED_AT, null);
         List<ValidationConsistencyChecker.Inconsistency> incs = checker.check(List.of(withReport));
         assertThat(incs).hasSize(1);
@@ -196,11 +196,9 @@ class ValidationConsistencyCheckerTest {
         // descriptionRaw and stored missingFields=[DESCRIPTION]
         // is consistent.
         GameDocumentDto base = fullDoc("portal");
-        GameDocumentDto blankDesc = docWithData(base, data -> {
-            data.put("description", "   ");
-            data.put("descriptionRaw", "   ");
-            return data;
-        });
+        GameDocumentDto blankDesc = docWithData(base, edit(b -> b
+                .description("   ")
+                .descriptionRaw("   ")));
         GameDocumentDto withReport = docWithReport(blankDesc, "PARTIAL",
                 List.of("DESCRIPTION"), FETCHED_AT, null);
         List<ValidationConsistencyChecker.Inconsistency> incs = checker.check(List.of(withReport));
@@ -213,11 +211,9 @@ class ValidationConsistencyCheckerTest {
         // or descriptionRaw is non-blank. Mirrors the writer
         // rule in ValidationService.
         GameDocumentDto base = fullDoc("portal");
-        GameDocumentDto onlyRaw = docWithData(base, data -> {
-            data.put("description", null);
-            data.put("descriptionRaw", "raw description");
-            return data;
-        });
+        GameDocumentDto onlyRaw = docWithData(base, edit(b -> b
+                .description(null)
+                .descriptionRaw("raw description")));
         List<ValidationConsistencyChecker.Inconsistency> incs = checker.check(List.of(onlyRaw));
         assertThat(incs).isEmpty();
     }
@@ -257,25 +253,15 @@ class ValidationConsistencyCheckerTest {
         return new GameDocumentDto(
                 slug, slug, "en", true, ADDED_AT,
                 CheapsharkBlock.empty(),
-                new RawgBlock(true, FETCHED_AT, populateAllFields(new java.util.HashMap<>())),
+                new RawgBlock(true, FETCHED_AT, RawgDocumentDtoFixtures.full(slug, slug).build()),
                 Map.of("es", LocaleBlock.unsynced(),
                         "en", LocaleBlock.unsynced(),
                         "fr", LocaleBlock.unsynced()),
                 new ValidationReportDto("PARTIAL", List.of("STORES"), FETCHED_AT, null));
     }
 
-    private static Map<String, Object> populateAllFields(Map<String, Object> data) {
-        data.put("description", "Lorem ipsum dolor sit amet.");
-        data.put("descriptionRaw", "Lorem ipsum dolor sit amet.");
-        data.put("headerImage", "https://example.com/header.jpg");
-        data.put("trailerUrl", "https://example.com/trailer.mp4");
-        data.put("released", "2007-10-10");
-        data.put("developers", List.of(Map.of("name", "Valve", "slug", "valve")));
-        data.put("publishers", List.of(Map.of("name", "Valve", "slug", "valve")));
-        data.put("genres", List.of(Map.of("name", "Action", "slug", "action")));
-        data.put("tags", List.of(Map.of("name", "fps", "slug", "fps")));
-        data.put("screenshots", List.of("https://example.com/s1.jpg"));
-        return data;
+    private static RawgDocumentDto populateAllFields(RawgDocumentDto base) {
+        return base;
     }
 
     private static GameDocumentDto docWithCheapshark(GameDocumentDto base, CheapsharkBlock cheap) {
@@ -293,16 +279,16 @@ class ValidationConsistencyCheckerTest {
     }
 
     private static GameDocumentDto docWithData(GameDocumentDto base,
-            java.util.function.Function<Map<String, Object>, Map<String, Object>> transform) {
-        Map<String, Object> baseData = base.rawg() == null || base.rawg().data() == null
-                ? new java.util.HashMap<>()
-                : new java.util.HashMap<>(base.rawg().data());
-        Map<String, Object> newData = transform.apply(baseData);
+            Function<RawgDocumentDto, RawgDocumentDto> transform) {
+        RawgDocumentDto baseData = base.rawg() == null || base.rawg().data() == null
+                ? RawgDocumentDtoFixtures.full(base.slug(), base.title()).build()
+                : base.rawg().data();
+        RawgDocumentDto newData = transform.apply(baseData);
         return new GameDocumentDto(
                 base.title(), base.slug(), base.originalLanguage(), base.active(), base.addedAt(),
                 base.cheapshark(),
-                new RawgBlock(newData.isEmpty() ? false : true,
-                        newData.isEmpty() ? null : Instant.parse(FETCHED_AT).toString(),
+                new RawgBlock(newData.fetchedAt() == null ? false : true,
+                        newData.fetchedAt(),
                         newData),
                 base.locales(),
                 base.validationReport());
@@ -316,10 +302,30 @@ class ValidationConsistencyCheckerTest {
                 new ValidationReportDto(status, missingFields, lastFull, lastPartial));
     }
 
-    private static java.util.function.Function<Map<String, Object>, Map<String, Object>> withoutKey(String key) {
-        return data -> {
-            data.remove(key);
-            return data;
+    /**
+     * Build a transform that pre-fills the builder from {@code dto}
+     * and then applies the caller's edits. The simplest edits are
+     * clearing fields (pass {@code null}) or replacing them with a
+     * specific value. Replaces the previous
+     * {@code withoutKey(String)} helper that operated on a
+     * {@code Map<String, Object>}.
+     */
+    private static Function<RawgDocumentDto, RawgDocumentDto> edit(
+            Function<RawgDocumentDtoFixtures.DetailsBuilder, RawgDocumentDtoFixtures.DetailsBuilder> edits) {
+        return dto -> {
+            RawgDocumentDtoFixtures.DetailsBuilder b = RawgDocumentDtoFixtures.full(dto.slug(), dto.name())
+                    .released(dto.released())
+                    .description(dto.description())
+                    .descriptionRaw(dto.descriptionRaw())
+                    .headerImage(dto.headerImage())
+                    .trailerUrl(dto.trailerUrl())
+                    .developers(dto.developers())
+                    .publishers(dto.publishers())
+                    .genres(dto.genres())
+                    .tags(dto.tags())
+                    .screenshots(dto.screenshots())
+                    .fetchedAt(dto.fetchedAt());
+            return edits.apply(b).build();
         };
     }
 }

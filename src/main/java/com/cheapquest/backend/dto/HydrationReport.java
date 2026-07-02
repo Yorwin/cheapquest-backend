@@ -23,6 +23,12 @@ import java.util.List;
  * itself failed (network, auth, etc.) and is distinct from
  * {@code empty}, which is a successful update of an EMPTY
  * report.
+ *
+ * <p>{@code movedToFailed} counts the slugs that were written
+ * to the DLQ collection (see AGENTS.md §7). Such slugs are
+ * not in {@code failures}: the per-doc update succeeded, the
+ * "failure" was the cumulative decision to give up after
+ * {@code maxAttempts} attempts.
  */
 public record HydrationReport(
         int processed,
@@ -33,6 +39,8 @@ public record HydrationReport(
         int failed,
         int dealsRefreshed,
         int rawgRefreshed,
+        int movedToFailed,
         long durationMs,
-        List<String> failures) {
+        List<String> failures,
+        List<String> movedToFailedList) {
 }

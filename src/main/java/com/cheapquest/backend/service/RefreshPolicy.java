@@ -2,10 +2,10 @@ package com.cheapquest.backend.service;
 
 import com.cheapquest.backend.config.AppProperties;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
+import com.cheapquest.backend.util.InstantUtils;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.format.DateTimeParseException;
 import java.util.Objects;
 
 /**
@@ -89,15 +89,11 @@ public final class RefreshPolicy {
     }
 
     private static boolean isStale(String fetchedAt, Instant now, Duration maxAge) {
-        if (fetchedAt == null) {
+        Instant t = InstantUtils.parseOrNull(fetchedAt);
+        if (t == null) {
             return true;
         }
-        try {
-            Instant t = Instant.parse(fetchedAt);
-            return Duration.between(t, now).compareTo(maxAge) > 0;
-        } catch (DateTimeParseException e) {
-            return true;
-        }
+        return Duration.between(t, now).compareTo(maxAge) > 0;
     }
 
     public record RefreshDecision(boolean refreshDeals, boolean refreshRawg) {

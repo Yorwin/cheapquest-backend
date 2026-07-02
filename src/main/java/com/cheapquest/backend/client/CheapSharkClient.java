@@ -5,6 +5,7 @@ import com.cheapquest.backend.dto.cheapshark.CheapSharkGameDetailDto;
 import com.cheapquest.backend.dto.cheapshark.CheapSharkGameSummaryDto;
 import com.cheapquest.backend.dto.cheapshark.CheapSharkStoreDto;
 import com.cheapquest.backend.exception.ApiUnavailableException;
+import com.cheapquest.backend.util.StringUtils;
 import com.cheapquest.backend.util.Urls;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -41,7 +42,7 @@ public final class CheapSharkClient {
     }
 
     public List<CheapSharkGameSummaryDto> findByTitle(String title) {
-        if (title == null || title.isBlank()) {
+        if (StringUtils.isBlank(title)) {
             return List.of();
         }
         String encoded = Urls.encode(title);
@@ -56,7 +57,7 @@ public final class CheapSharkClient {
     }
 
     public Optional<CheapSharkGameDetailDto> getDetails(String gameId) {
-        if (gameId == null || gameId.isBlank()) {
+        if (StringUtils.isBlank(gameId)) {
             return Optional.empty();
         }
         String url = baseUrl + "/games?id=" + Urls.encode(gameId);

@@ -5,6 +5,7 @@ import com.cheapquest.backend.dto.firebase.GameDocumentDto;
 import com.cheapquest.backend.dto.firebase.LocaleBlock;
 import com.cheapquest.backend.dto.firebase.OfferDto;
 import com.cheapquest.backend.dto.firebase.RawgBlock;
+import com.cheapquest.backend.dto.firebase.RawgDocumentDto;
 import com.cheapquest.backend.dto.firebase.ValidationReportDto;
 import java.math.BigDecimal;
 import java.util.List;
@@ -47,8 +48,12 @@ public final class GameDocumentDtoFixtures {
                                 new BigDecimal("74.977"), "https://deal/2")),
                         FETCHED_AT),
                 new RawgBlock(true, FETCHED_AT,
-                        Map.of("slug", slug, "name", title,
-                                "released", "2021-10-06")),
+                        new RawgDocumentDto(slug, title, title, "2021-10-06",
+                                null, null, null, null, null, null, null, null,
+                                0, 0, 0, 0,
+                                List.of(), List.of(), List.of(), List.of(),
+                                List.of(), List.of(), List.of(), List.of(),
+                                List.of(), FETCHED_AT)),
                 Map.of(
                         "es", LocaleBlock.unsynced(),
                         "en", new LocaleBlock(true, FETCHED_AT),

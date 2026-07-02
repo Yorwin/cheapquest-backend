@@ -24,8 +24,10 @@ import com.cheapquest.backend.dto.firebase.CheapsharkBlock;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
 import com.cheapquest.backend.dto.firebase.HydrationPatch;
 import com.cheapquest.backend.dto.firebase.LocaleBlock;
+import com.cheapquest.backend.dto.firebase.PendingDoc;
 import com.cheapquest.backend.dto.firebase.RawgBlock;
 import com.cheapquest.backend.dto.firebase.ValidationReportDto;
+import com.cheapquest.backend.exception.DocumentNotFoundException;
 import com.cheapquest.backend.exception.FirebaseUnavailableException;
 import com.cheapquest.backend.fixtures.GameDocumentDtoFixtures;
 import com.cheapquest.backend.fixtures.RawgDetailsFixtures;
@@ -33,6 +35,8 @@ import com.cheapquest.backend.mapper.FirebaseMapper;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Optional;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.EnumSet;
@@ -78,7 +82,7 @@ class GameHydrationServiceTest {
     @Test
     void hydrateAll_writesPatchWhenBothSourcesSucceed() {
         GameDocumentDto doc = sampleDoc("portal", "Portal");
-        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        stubPending(doc);
         when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
@@ -102,7 +106,7 @@ class GameHydrationServiceTest {
     @Test
     void hydrateAll_countsPartialWhenSomeFieldsMissing() {
         GameDocumentDto doc = sampleDoc("portal", "Portal");
-        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        stubPending(doc);
         when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         RawgDetails rawgNoTrailer = RawgDetailsFixtures.full("portal", "Portal")
@@ -124,7 +128,7 @@ class GameHydrationServiceTest {
     @Test
     void hydrateAll_doesNotWriteWhenValidationIsEmpty() {
         GameDocumentDto doc = sampleDoc("portal", "Portal");
-        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        stubPending(doc);
         when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
@@ -150,7 +154,7 @@ class GameHydrationServiceTest {
         // test asserted partial=1 because the validator saw
         // merged.rawg=null and added 9 RAWG fields to missing.
         GameDocumentDto doc = sampleDoc("portal", "Portal");
-        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        stubPending(doc);
         when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, false));
         when(gameLookup.lookupByTitle(eq("Portal"), eq(EnumSet.of(GameLookup.Source.CHEAPSHARK))))
@@ -174,7 +178,7 @@ class GameHydrationServiceTest {
         // RAWG-side deficiencies; there is no previous report to
         // carry STORES forward from. Status is COMPLETE.
         GameDocumentDto doc = sampleDoc("portal", "Portal");
-        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        stubPending(doc);
         when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(false, true));
         when(gameLookup.lookupByTitle(eq("Portal"), eq(EnumSet.of(GameLookup.Source.RAWG))))
@@ -194,7 +198,7 @@ class GameHydrationServiceTest {
     @Test
     void hydrateAll_skipsFreshDoc() {
         GameDocumentDto doc = sampleDoc("portal", "Portal");
-        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        stubPending(doc);
         when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(false, false));
 
@@ -213,7 +217,7 @@ class GameHydrationServiceTest {
     @Test
     void hydrateAll_countsFailureWhenFirestoreUpdateThrows() {
         GameDocumentDto doc = sampleDoc("portal", "Portal");
-        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        stubPending(doc);
         when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
@@ -230,11 +234,182 @@ class GameHydrationServiceTest {
     }
 
     @Test
+    void hydrateAll_countsDocumentNotFoundAsFailure() {
+        // The doc was deleted between read and write. The hydration
+        // service still counts the doc as failed (no surviving state
+        // to update) and surfaces the slug in the failures list. The
+        // exception type lets the operator distinguish this from a
+        // genuine backend outage in the logs.
+        GameDocumentDto doc = sampleDoc("portal", "Portal");
+        stubPending(doc);
+        when(refreshPolicy.decide(doc, false))
+                .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
+        when(gameLookup.lookupByTitle(eq("Portal"), any()))
+                .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
+        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        org.mockito.Mockito.doThrow(new DocumentNotFoundException("document missing: portal",
+                        new FirebaseUnavailableException("failed updating portal", null)))
+                .when(firebaseClient).update(eq("portal"), any(HydrationPatch.class));
+
+        HydrationReport report = service.hydrateAll();
+
+        assertThat(report.processed()).isEqualTo(1);
+        assertThat(report.failed()).isEqualTo(1);
+        assertThat(report.failures()).containsExactly("portal");
+    }
+
+    @Test
+    void hydrateAll_removesFromPendingOnSuccess() {
+        GameDocumentDto doc = sampleDoc("portal", "Portal");
+        stubPending(doc);
+        when(refreshPolicy.decide(doc, false))
+                .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
+        when(gameLookup.lookupByTitle(eq("Portal"), any()))
+                .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
+        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+
+        service.hydrateAll();
+
+        org.mockito.Mockito.verify(firebaseClient).removeFromPending("portal");
+    }
+
+    @Test
+    void hydrateAll_recordsPendingFailureOnTransientException() {
+        // First failure: attempt count goes to 1, still under the
+        // default maxAttempts=3, so the slug stays in pending (not
+        // moved to failed).
+        GameDocumentDto doc = sampleDoc("portal", "Portal");
+        stubPending(doc);
+        when(refreshPolicy.decide(doc, false))
+                .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
+        when(gameLookup.lookupByTitle(eq("Portal"), any()))
+                .thenThrow(new RuntimeException("Firestore blip"));
+
+        HydrationReport report = service.hydrateAll();
+
+        assertThat(report.failed()).isEqualTo(1);
+        assertThat(report.movedToFailed()).isZero();
+        org.mockito.Mockito.verify(firebaseClient).recordPendingFailure(
+                eq("portal"), eq(1), any(Instant.class), anyString());
+        org.mockito.Mockito.verify(firebaseClient, org.mockito.Mockito.never())
+                .moveToFailed(any());
+    }
+
+    @Test
+    void hydrateAll_movesToFailedAfterMaxAttempts() {
+        // Pending entry already has 2 attempts; this run is the
+        // 3rd and last before the DLQ. The slug must be moved to
+        // failed and the report must include it in movedToFailedList.
+        GameDocumentDto doc = sampleDoc("portal", "Portal");
+        com.cheapquest.backend.dto.firebase.PendingDoc entry =
+                new com.cheapquest.backend.dto.firebase.PendingDoc(
+                        "portal", 2, Instant.parse("2026-06-30T10:00:00Z"), "previous error");
+        when(firebaseClient.readPending()).thenReturn(List.of(entry));
+        when(firebaseClient.readOne("portal")).thenReturn(Optional.of(doc));
+        org.mockito.Mockito.doNothing().when(firebaseClient).removeFromPending("portal");
+        when(refreshPolicy.decide(doc, false))
+                .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
+        when(gameLookup.lookupByTitle(eq("Portal"), any()))
+                .thenThrow(new RuntimeException("still down"));
+
+        HydrationReport report = service.hydrateAll();
+
+        // The slug is moved to the DLQ after 3 strikes, so it
+        // counts as movedToFailed (not as a regular "failed": a
+        // per-doc exception is a failure until the DLQ triggers,
+        // at which point the bookkeeping shifts to movedToFailed).
+        assertThat(report.failed()).isZero();
+        assertThat(report.movedToFailed()).isEqualTo(1);
+        assertThat(report.movedToFailedList()).containsExactly("portal");
+        org.mockito.Mockito.verify(firebaseClient).moveToFailed(any());
+        // The slug is removed from pending by moveToFailed itself,
+        // so removeFromPending must NOT be called separately.
+        org.mockito.Mockito.verify(firebaseClient, org.mockito.Mockito.never())
+                .removeFromPending(anyString());
+    }
+
+    @Test
+    void hydrateAll_treatsEmptyOutcomeAsFailure() {
+        // Both sources returning empty is the canonical "doc
+        // no longer exists in the upstream APIs" case. It must
+        // count toward the 3-strike rule (so a chronically-empty
+        // slug eventually lands in the DLQ).
+        GameDocumentDto doc = sampleDoc("portal", "Portal");
+        stubPending(doc);
+        when(refreshPolicy.decide(doc, false))
+                .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
+        // The typed "empty" marker: both sources failed lookup,
+        // validator returns EMPTY.
+        when(gameLookup.lookupByTitle(eq("Portal"), any()))
+                .thenReturn(GameLookup.GameLookupResult.empty());
+
+        HydrationReport report = service.hydrateAll();
+
+        // EMPTY outcome shows in the "empty" bucket (not "failed")
+        // because the per-doc hydration call did not throw. The
+        // failure signal is the pending-side bookkeeping: the
+        // attempt counter is bumped, the slug stays in pending,
+        // and after 3 strikes the slug moves to the failed DLQ.
+        assertThat(report.empty()).isEqualTo(1);
+        assertThat(report.failed()).isZero();
+        org.mockito.Mockito.verify(firebaseClient).recordPendingFailure(
+                eq("portal"), eq(1), any(Instant.class), anyString());
+        org.mockito.Mockito.verify(firebaseClient, org.mockito.Mockito.never())
+                .removeFromPending(anyString());
+    }
+
+    @Test
+    void hydrateAll_handlesGameDocMissingFromFirestore() {
+        // The pending entry points to a slug whose games/{slug}
+        // doc no longer exists (operator deleted it directly).
+        // The hydration service must treat this as a failure
+        // and bump the attempt counter.
+        com.cheapquest.backend.dto.firebase.PendingDoc entry =
+                new com.cheapquest.backend.dto.firebase.PendingDoc("ghost", 0, null, null);
+        when(firebaseClient.readPending()).thenReturn(List.of(entry));
+        when(firebaseClient.readOne("ghost")).thenReturn(Optional.empty());
+
+        HydrationReport report = service.hydrateAll();
+
+        assertThat(report.processed()).isEqualTo(1);
+        assertThat(report.empty()).isEqualTo(1);
+        org.mockito.Mockito.verify(firebaseClient).recordPendingFailure(
+                eq("ghost"), eq(1), any(Instant.class), anyString());
+    }
+
+    @Test
+    void hydrateAll_processesMultiplePendingEntries() {
+        // Each entry must be processed independently: successes
+        // are removed from pending, failures are recorded against
+        // their own attempt counter.
+        GameDocumentDto doc1 = sampleDoc("portal", "Portal");
+        GameDocumentDto doc2 = sampleDoc("hl2", "Half-Life 2");
+        stubPending(doc1, doc2);
+        when(refreshPolicy.decide(doc1, false))
+                .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
+        when(refreshPolicy.decide(doc2, false))
+                .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
+        when(gameLookup.lookupByTitle(eq("Portal"), any()))
+                .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
+        when(gameLookup.lookupByTitle(eq("Half-Life 2"), any()))
+                .thenThrow(new RuntimeException("network blip"));
+        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+
+        HydrationReport report = service.hydrateAll();
+
+        assertThat(report.processed()).isEqualTo(2);
+        assertThat(report.failed()).isEqualTo(1);
+        org.mockito.Mockito.verify(firebaseClient).removeFromPending("portal");
+        org.mockito.Mockito.verify(firebaseClient).recordPendingFailure(
+                eq("hl2"), eq(1), any(Instant.class), anyString());
+    }
+
+    @Test
     void hydrateAll_processesMultipleDocs() {
         GameDocumentDto portal = sampleDoc("portal", "Portal");
         GameDocumentDto hl2 = sampleDoc("half-life-2", "Half-Life 2");
         GameDocumentDto stardew = sampleDoc("stardew-valley", "Stardew Valley");
-        when(firebaseClient.readAll()).thenReturn(List.of(portal, hl2, stardew));
+        stubPending(portal, hl2, stardew);
         when(refreshPolicy.decide(portal, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(refreshPolicy.decide(hl2, false))
@@ -278,7 +453,7 @@ class GameHydrationServiceTest {
                 CheapsharkBlock.empty(),
                 RawgBlock.empty(),
                 Map.of("es", LocaleBlock.unsynced()), null);
-        when(firebaseClient.readAll()).thenReturn(List.of(docNoSlug, docNoTitle));
+        stubPending(docNoSlug, docNoTitle);
 
         HydrationReport report = service.hydrateAll();
 
@@ -320,7 +495,7 @@ class GameHydrationServiceTest {
     @Test
     void hydrateAll_passesCorrectTitleAndSourcesToLookup() {
         GameDocumentDto doc = sampleDoc("portal", "Portal");
-        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        stubPending(doc);
         when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, false));
         when(gameLookup.lookupByTitle(eq("Portal"), eq(EnumSet.of(GameLookup.Source.CHEAPSHARK))))
@@ -336,7 +511,7 @@ class GameHydrationServiceTest {
     void composeReport_preservesLastFullFetchAtOnPartialRefresh() {
         Instant previousFull = T.minus(Duration.ofDays(1));
         GameDocumentDto doc = docWithReport(previousFull.toString(), null);
-        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        stubPending(doc);
         when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, false));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
@@ -355,7 +530,7 @@ class GameHydrationServiceTest {
     void composeReport_updatesLastFullFetchAtOnFullRefresh() {
         Instant previousPartial = T.minus(Duration.ofDays(30));
         GameDocumentDto doc = docWithReport(T.toString(), previousPartial.toString());
-        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        stubPending(doc);
         when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
@@ -373,7 +548,7 @@ class GameHydrationServiceTest {
     @Test
     void composeReport_usesNowWhenExistingTimestampsMissing() {
         GameDocumentDto doc = docWithReport(null, null);
-        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        stubPending(doc);
         when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
@@ -400,7 +575,7 @@ class GameHydrationServiceTest {
         // (e.g. lastFullFetchAt=2031-06-15T12:00:00Z in
         // /games/portal after the cadence commit).
         GameDocumentDto doc = docWithNullReport();
-        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        stubPending(doc);
         when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, false));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
@@ -429,7 +604,7 @@ class GameHydrationServiceTest {
         GameDocumentDto doc = docWithMissingFields("portal", "Portal",
                 List.of("DESCRIPTION", "HEADER_IMAGE", "TRAILER", "GENRES", "TAGS",
                         "SCREENSHOTS", "RELEASED", "DEVELOPER", "PUBLISHER"));
-        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        stubPending(doc);
         when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, false));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
@@ -458,7 +633,7 @@ class GameHydrationServiceTest {
         // fresh RAWG is full. Status: PARTIAL (because STORES is
         // still in the merged set).
         GameDocumentDto doc = docWithMissingFields("portal", "Portal", List.of("STORES"));
-        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        stubPending(doc);
         when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(false, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
@@ -481,7 +656,7 @@ class GameHydrationServiceTest {
         // missing, so the merged set must NOT contain STORES. No
         // other fields are missing either. Status: COMPLETE.
         GameDocumentDto doc = docWithMissingFields("portal", "Portal", List.of("STORES"));
-        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        stubPending(doc);
         when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, false));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
@@ -505,7 +680,7 @@ class GameHydrationServiceTest {
         // because the refreshed source's fields are evaluated from
         // fresh, not carried. Status: PARTIAL.
         GameDocumentDto doc = docWithMissingFields("portal", "Portal", List.of());
-        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        stubPending(doc);
         when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, false));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
@@ -537,7 +712,7 @@ class GameHydrationServiceTest {
                 null, rawgNoTrailer, T);
         GameDocumentDto doc = docWithMissingFields("portal", "Portal",
                 List.of("DESCRIPTION", "HEADER_IMAGE"));
-        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        stubPending(doc);
         when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
@@ -563,7 +738,7 @@ class GameHydrationServiceTest {
         GameDocumentDto doc = docWithMissingFields("portal", "Portal",
                 List.of("DESCRIPTION", "HEADER_IMAGE", "TRAILER", "GENRES", "TAGS",
                         "SCREENSHOTS", "RELEASED", "DEVELOPER", "PUBLISHER"));
-        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        stubPending(doc);
         when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
@@ -586,7 +761,7 @@ class GameHydrationServiceTest {
         // empty set. The composed report then reflects only the
         // fresh evaluation filtered to the refreshed source.
         GameDocumentDto doc = docWithNullReport();
-        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        stubPending(doc);
         when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, false));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
@@ -608,7 +783,7 @@ class GameHydrationServiceTest {
         // without aborting the hydration.
         GameDocumentDto doc = docWithMissingFields("portal", "Portal",
                 List.of("STORES", "LEGACY_FIELD", "TRAILER"));
-        when(firebaseClient.readAll()).thenReturn(List.of(doc));
+        stubPending(doc);
         when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(false, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
@@ -689,5 +864,31 @@ class GameHydrationServiceTest {
     private static RawgDetails sampleRawg() {
         return RawgDetailsFixtures.full("portal", "Portal")
                 .fetchedAt(T).build();
+    }
+
+    /**
+     * Wire the {@code readPending} + {@code readOne} +
+     * {@code removeFromPending} chain that
+     * {@link GameHydrationService#hydrateAll} walks for every
+     * pending entry. Replaces the previous
+     * {@code when(readAll()).thenReturn(List.of(doc))} pattern:
+     * the service no longer reads the whole collection, it reads
+     * the pending queue and then loads the game doc per entry.
+     *
+     * <p>{@code removeFromPending} is stubbed as a no-op so the
+     * test does not have to verify it on every case. Tests that
+     * exercise the failure path can override
+     * {@code recordPendingFailure} / {@code moveToFailed}
+     * themselves.
+     */
+    private void stubPending(GameDocumentDto... docs) {
+        List<PendingDoc> entries = new ArrayList<>();
+        for (GameDocumentDto doc : docs) {
+            String slug = doc.slug() == null ? "<null-slug>" : doc.slug();
+            entries.add(new PendingDoc(slug, 0, null, null));
+            when(firebaseClient.readOne(slug)).thenReturn(Optional.of(doc));
+            org.mockito.Mockito.doNothing().when(firebaseClient).removeFromPending(slug);
+        }
+        when(firebaseClient.readPending()).thenReturn(entries);
     }
 }

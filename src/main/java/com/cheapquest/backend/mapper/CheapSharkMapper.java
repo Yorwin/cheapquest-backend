@@ -8,6 +8,7 @@ import com.cheapquest.backend.dto.cheapshark.CheapSharkGameInfoDto;
 import com.cheapquest.backend.dto.cheapshark.CheapSharkGameSummaryDto;
 import com.cheapquest.backend.dto.cheapshark.CheapSharkStoreDto;
 import com.cheapquest.backend.util.StringNormalize;
+import com.cheapquest.backend.util.StringUtils;
 import java.math.BigDecimal;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
@@ -62,7 +63,7 @@ public final class CheapSharkMapper {
     }
 
     public String buildDealUrl(String dealId) {
-        if (dealId == null || dealId.isBlank()) {
+        if (StringUtils.isBlank(dealId)) {
             return null;
         }
         try {
@@ -117,7 +118,7 @@ public final class CheapSharkMapper {
     }
 
     private static String toAbsoluteIconUrl(String relative) {
-        if (relative == null || relative.isBlank()) {
+        if (StringUtils.isBlank(relative)) {
             return null;
         }
         if (relative.startsWith("http://") || relative.startsWith("https://")) {
@@ -127,7 +128,7 @@ public final class CheapSharkMapper {
     }
 
     private static BigDecimal toBigDecimal(String s) {
-        if (s == null || s.isBlank()) {
+        if (StringUtils.isBlank(s)) {
             return BigDecimal.ZERO;
         }
         try {

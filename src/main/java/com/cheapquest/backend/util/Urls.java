@@ -13,7 +13,7 @@ public final class Urls {
     }
 
     public static String buildKeyParam(String apiKey) {
-        if (apiKey == null || apiKey.isBlank()) {
+        if (StringUtils.isBlank(apiKey)) {
             return "";
         }
         return "key=" + apiKey;

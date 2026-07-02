@@ -3,6 +3,7 @@ package com.cheapquest.backend.service;
 import com.cheapquest.backend.domain.AggregatedGame;
 import com.cheapquest.backend.domain.GameDeals;
 import com.cheapquest.backend.exception.GameNotFoundException;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,9 +20,15 @@ public final class GameLookupService implements GameLookup {
     }
 
     @Override
-    public GameLookupResult lookupByTitle(String title) {
-        GameDeals deals = tryCheapShark(title);
-        AggregatedGame rawgAgg = tryRawg(title);
+    public GameLookupResult lookupByTitle(String title, Set<Source> sourcesToFetch) {
+        GameDeals deals = null;
+        if (sourcesToFetch.contains(Source.CHEAPSHARK)) {
+            deals = tryCheapShark(title);
+        }
+        AggregatedGame rawgAgg = null;
+        if (sourcesToFetch.contains(Source.RAWG)) {
+            rawgAgg = tryRawg(title);
+        }
         return new GameLookupResult(deals, rawgAgg);
     }
 

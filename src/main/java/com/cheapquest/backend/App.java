@@ -27,6 +27,7 @@ import com.cheapquest.backend.service.GameLookup;
 import com.cheapquest.backend.service.GameLookupService;
 import com.cheapquest.backend.service.GameMerger;
 import com.cheapquest.backend.service.RawgAggregationService;
+import com.cheapquest.backend.service.RefreshPolicy;
 import com.cheapquest.backend.service.ValidationService;
 import com.google.cloud.firestore.Firestore;
 import com.google.firebase.FirebaseApp;
@@ -100,7 +101,8 @@ public final class App {
 
 		if ("hydrate".equals(mode)) {
 			GameLookup gameLookup = new GameLookupService(service, rawgService);
-			runHydrate(firebaseClient, gameLookup, validator, merger, clock);
+			RefreshPolicy refreshPolicy = buildRefreshPolicy(props, clock);
+			runHydrate(firebaseClient, gameLookup, validator, merger, refreshPolicy, clock);
 			System.out.println("[hydrate] end");
 			return;
 		}
@@ -144,24 +146,37 @@ public final class App {
 
     private static void runHydrate(FirebaseClient firebaseClient,
             GameLookup gameLookup,
-            ValidationService validator, GameMerger merger, Clock clock) {
+            ValidationService validator, GameMerger merger,
+            RefreshPolicy refreshPolicy, Clock clock) {
         if (firebaseClient == null) {
             System.out.println("[hydrate] ABORT: firebase client not ready");
             return;
         }
         GameHydrationService hydration = new GameHydrationService(
                 firebaseClient, new FirebaseMapper(),
-                gameLookup, merger, validator, clock);
+                gameLookup, merger, validator, refreshPolicy, clock);
         com.cheapquest.backend.dto.HydrationReport report = hydration.hydrateAll();
         System.out.println("[hydrate] processed=" + report.processed()
                 + " complete=" + report.complete()
                 + " partial=" + report.partial()
                 + " empty=" + report.empty()
+                + " skipped=" + report.skipped()
                 + " failed=" + report.failed()
+                + " deals_refreshed=" + report.dealsRefreshed()
+                + " rawg_refreshed=" + report.rawgRefreshed()
                 + " durationMs=" + report.durationMs());
         if (!report.failures().isEmpty()) {
             System.out.println("[hydrate] failures=" + report.failures());
         }
+    }
+
+    private static RefreshPolicy buildRefreshPolicy(AppProperties props, Clock clock) {
+        boolean force = Boolean.parseBoolean(System.getProperty("app.refresh.force", "false"));
+        if (force) {
+            System.out.println("[hydrate] app.refresh.force=true -> ignoring per-source cadence");
+            return new RefreshPolicy(Duration.ofDays(365 * 100), Duration.ofDays(365 * 100), clock);
+        }
+        return new RefreshPolicy(props, clock);
     }
 
     private static List<CheapSharkStoreDto> loadStoresOrAbort(CheapSharkClient client) {

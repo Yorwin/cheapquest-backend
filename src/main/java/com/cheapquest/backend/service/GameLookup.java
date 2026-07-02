@@ -2,10 +2,16 @@ package com.cheapquest.backend.service;
 
 import com.cheapquest.backend.domain.AggregatedGame;
 import com.cheapquest.backend.domain.GameDeals;
+import java.util.Set;
 
 /**
  * Orchestrates the lookup of a single game across every registered
- * source. Each source is called independently; a per-source failure
+ * source. The {@link Source} set tells the implementation which
+ * sources to call; sources not in the set are not even attempted,
+ * which avoids wasted API calls and rate-limit budget when the
+ * caller (typically the per-source cadence) knows they are fresh.
+ *
+ * <p>Each source is called independently; a per-source failure
  * (game not found, transient API error) does not abort the others.
  * The returned {@link GameLookupResult} carries whichever payloads
  * succeeded, with the failing slots left as null. This is the
@@ -15,7 +21,9 @@ import com.cheapquest.backend.domain.GameDeals;
  */
 public interface GameLookup {
 
-    GameLookupResult lookupByTitle(String title);
+    GameLookupResult lookupByTitle(String title, Set<Source> sourcesToFetch);
+
+    enum Source { CHEAPSHARK, RAWG }
 
     record GameLookupResult(GameDeals deals, AggregatedGame rawgAgg) {
 

@@ -167,4 +167,12 @@ public final class AppProperties {
     public int refreshFailedCooldownDays() {
         return Integer.parseInt(props.getProperty("refresh.failed-cooldown-days", "7"));
     }
+
+    public int refreshDealsMaxAgeHours() {
+        return Integer.parseInt(props.getProperty("refresh.deals-max-age-hours", "24"));
+    }
+
+    public int refreshRawgMaxAgeDays() {
+        return Integer.parseInt(props.getProperty("refresh.rawg-max-age-days", "180"));
+    }
 }

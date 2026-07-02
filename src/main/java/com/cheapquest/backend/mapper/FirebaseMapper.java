@@ -114,7 +114,8 @@ public final class FirebaseMapper {
                 deals.cheapestEver(),
                 bestDto,
                 deals.offerCount(),
-                List.copyOf(restDtos));
+                List.copyOf(restDtos),
+                deals.fetchedAt().toString());
     }
 
     public RawgBlock toRawgBlock(RawgDetails rawg) {

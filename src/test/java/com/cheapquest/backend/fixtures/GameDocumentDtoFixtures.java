@@ -56,7 +56,7 @@ public final class GameDocumentDtoFixtures {
                                 List.of(), FETCHED_AT)),
                 Map.of(
                         "es", LocaleBlock.unsynced(),
-                        "en", new LocaleBlock(true, FETCHED_AT),
+                        "en", new LocaleBlock(true, FETCHED_AT, FETCHED_AT),
                         "fr", LocaleBlock.unsynced()),
                 new ValidationReportDto("COMPLETE", List.of(),
                         COMPLETE_TIMESTAMP, null));

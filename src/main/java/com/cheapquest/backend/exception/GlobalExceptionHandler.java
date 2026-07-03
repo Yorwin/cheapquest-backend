@@ -18,6 +18,7 @@ public final class GlobalExceptionHandler {
     public static final int SC_NOT_FOUND = 404;
     public static final int SC_CONFLICT = 409;
     public static final int SC_INTERNAL_SERVER_ERROR = 500;
+    public static final int SC_BAD_GATEWAY = 502;
 
     private static final org.slf4j.Logger log =
             org.slf4j.LoggerFactory.getLogger(GlobalExceptionHandler.class);
@@ -45,6 +46,10 @@ public final class GlobalExceptionHandler {
         if (t instanceof IllegalArgumentException e) {
             return new Mapped(SC_BAD_REQUEST,
                     com.cheapquest.backend.endpoint.ErrorResponse.of("bad_request", e.getMessage()));
+        }
+        if (t instanceof TranslationFailedException) {
+            return new Mapped(SC_BAD_GATEWAY,
+                    com.cheapquest.backend.endpoint.ErrorResponse.of("translation_unavailable", t.getMessage()));
         }
         log.error("internal_server_error type={} message={}",
                 t.getClass().getSimpleName(), t.getMessage(), t);

@@ -549,6 +549,43 @@ class FirebaseClientTest {
     }
 
     @Test
+    void readFailed_returnsMaterialisedListOfFailedDocs() throws Exception {
+        com.cheapquest.backend.dto.firebase.FailedDoc f1 =
+                new com.cheapquest.backend.dto.firebase.FailedDoc(
+                        "portal", 3,
+                        Instant.parse("2026-06-29T10:00:00Z"),
+                        Instant.parse("2026-06-30T10:00:00Z"),
+                        "both sources returned empty");
+        com.cheapquest.backend.dto.firebase.FailedDoc f2 =
+                new com.cheapquest.backend.dto.firebase.FailedDoc(
+                        "hl2", 3,
+                        Instant.parse("2026-06-29T10:05:00Z"),
+                        Instant.parse("2026-06-30T10:05:00Z"),
+                        "rawg 404");
+
+        com.google.cloud.firestore.QueryDocumentSnapshot d1 = mockQueryDoc("portal", "Portal");
+        com.google.cloud.firestore.QueryDocumentSnapshot d2 = mockQueryDoc("hl2", "Half-Life 2");
+        when(d1.toObject(com.cheapquest.backend.dto.firebase.FailedDoc.class)).thenReturn(f1);
+        when(d2.toObject(com.cheapquest.backend.dto.firebase.FailedDoc.class)).thenReturn(f2);
+
+        com.google.cloud.firestore.Query orderedQuery = mock(com.google.cloud.firestore.Query.class);
+        com.google.cloud.firestore.QuerySnapshot failedSnapshot = mock(com.google.cloud.firestore.QuerySnapshot.class);
+        when(failedSnapshot.getDocuments()).thenReturn(List.of(d1, d2));
+        SettableApiFuture<com.google.cloud.firestore.QuerySnapshot> future = SettableApiFuture.create();
+        future.set(failedSnapshot);
+        when(orderedQuery.get()).thenReturn(future);
+
+        com.google.cloud.firestore.CollectionReference failedCollection =
+                mock(com.google.cloud.firestore.CollectionReference.class);
+        when(firestore.collection("failed")).thenReturn(failedCollection);
+        when(failedCollection.orderBy(any(FieldPath.class))).thenReturn(orderedQuery);
+
+        List<com.cheapquest.backend.dto.firebase.FailedDoc> result = client.readFailed();
+
+        assertThat(result).containsExactly(f1, f2);
+    }
+
+    @Test
     void markLocaleSynced_writesDotNotationPartialUpdate() throws Exception {
         DocumentReference ref = mock(DocumentReference.class);
         when(gamesCollection.document("portal")).thenReturn(ref);

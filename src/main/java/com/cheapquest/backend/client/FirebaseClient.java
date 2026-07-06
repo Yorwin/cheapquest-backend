@@ -160,6 +160,29 @@ public final class FirebaseClient {
     }
 
     /**
+     * Read the {@code failed} collection. Materialised into a
+     * {@code List} with the same rationale as
+     * {@link #readPending()}: the operator endpoint iterates
+     * the result more than once and the queue is small enough
+     * to fit in one round-trip.
+     */
+    public List<FailedDoc> readFailed() {
+        QuerySnapshot snapshot = await("reading-failed", failedCollectionPath,
+                () -> firestore.collection(failedCollectionPath)
+                        .orderBy(FieldPath.documentId())
+                        .get());
+        List<QueryDocumentSnapshot> docs = snapshot.getDocuments();
+        List<FailedDoc> result = new ArrayList<>(docs.size());
+        for (QueryDocumentSnapshot d : docs) {
+            FailedDoc f = d.toObject(FailedDoc.class);
+            if (f != null) {
+                result.add(f);
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    /**
      * Atomic create. Returns {@code true} if the document was created,
      * {@code false} if a document with that slug already exists.
      */

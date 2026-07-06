@@ -30,8 +30,8 @@ class GameViewTest {
 
     @Test
     void carries_cheapshark_and_rawg_views() {
-        CheapsharkView cs = new CheapsharkView(true, null, null, java.util.List.of());
-        RawgView rawg = new RawgView("2014-09-16", 96, 4.5);
+        CheapsharkView cs = new CheapsharkView(true, null, null, 0, java.util.List.of());
+        RawgView rawg = new RawgView("2014-09-16", 96, 4.5, null, null, null, null, null);
         GameView g = new GameView("portal-2", "Portal 2", cs, rawg);
         assertThat(g.cheapshark()).isSameAs(cs);
         assertThat(g.rawg()).isSameAs(rawg);

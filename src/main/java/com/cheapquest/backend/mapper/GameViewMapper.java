@@ -53,13 +53,14 @@ public final class GameViewMapper {
         }
         boolean synced = Boolean.TRUE.equals(block.synced());
         Offer best = block.bestDeal() == null ? null : OfferConverter.toDomain(block.bestDeal());
+        Integer offerCount = block.offerCount();
         List<Offer> offers = new ArrayList<>();
         if (block.deals() != null) {
             for (OfferDto d : block.deals()) {
                 offers.add(OfferConverter.toDomain(d));
             }
         }
-        return new CheapsharkView(synced, best, block.cheapestEver(), offers);
+        return new CheapsharkView(synced, best, block.cheapestEver(), offerCount, offers);
     }
 
     private static RawgView toRawgView(RawgBlock block) {
@@ -70,6 +71,14 @@ public final class GameViewMapper {
         if (data == null) {
             return null;
         }
-        return new RawgView(data.released(), data.metacritic(), data.rating());
+        return new RawgView(
+                data.released(),
+                data.metacritic(),
+                data.rating(),
+                data.ratingsCount(),
+                data.additionsCount(),
+                data.addedByStatus(),
+                data.reactions(),
+                data.suggestionsCount());
     }
 }

@@ -17,6 +17,7 @@ public record CheapsharkView(
         boolean synced,
         Offer bestDeal,
         BigDecimal cheapestEver,
+        Integer offerCount,
         List<Offer> offers) {
 
     public CheapsharkView {

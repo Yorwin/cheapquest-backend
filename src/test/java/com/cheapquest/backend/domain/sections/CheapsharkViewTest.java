@@ -17,25 +17,26 @@ class CheapsharkViewTest {
 
     @Test
     void accepts_null_offers_and_returns_emptyList() {
-        CheapsharkView v = new CheapsharkView(false, null, null, null);
+        CheapsharkView v = new CheapsharkView(false, null, null, null, null);
         assertThat(v.offers()).isEmpty();
         assertThat(v.synced()).isFalse();
         assertThat(v.bestDeal()).isNull();
         assertThat(v.cheapestEver()).isNull();
+        assertThat(v.offerCount()).isNull();
     }
 
     @Test
     void offers_is_defensive_copy() {
         List<Offer> mutable = new ArrayList<>();
         mutable.add(OFFER);
-        CheapsharkView v = new CheapsharkView(true, OFFER, null, mutable);
+        CheapsharkView v = new CheapsharkView(true, OFFER, null, 1, mutable);
         mutable.clear();
         assertThat(v.offers()).hasSize(1);
     }
 
     @Test
     void offers_is_unmodifiable() {
-        CheapsharkView v = new CheapsharkView(true, OFFER, null, List.of(OFFER));
+        CheapsharkView v = new CheapsharkView(true, OFFER, null, 1, List.of(OFFER));
         assertThat(v.offers()).isUnmodifiable();
     }
 }

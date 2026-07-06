@@ -144,13 +144,13 @@ class MejoresPromosBuilderTest {
                         BigDecimal.TEN, BigDecimal.valueOf(20), savings, null)
                 : null;
         return new GameView(slug, title,
-                new CheapsharkView(synced, best, null, List.of()),
+                new CheapsharkView(synced, best, null, null, List.of()),
                 null);
     }
 
     private static GameView gameWithNullBestDeal(String slug, String title) {
         return new GameView(slug, title,
-                new CheapsharkView(true, null, null, List.of()),
+                new CheapsharkView(true, null, null, null, List.of()),
                 null);
     }
 }

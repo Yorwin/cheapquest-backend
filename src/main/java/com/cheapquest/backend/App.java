@@ -265,14 +265,20 @@ public final class App {
         }
         GameLookup gameLookup = new GameLookupService(service, rawgService);
         RefreshPolicy refreshPolicy = new RefreshPolicy(props, clock);
+        // Build the TranslationService BEFORE the hydration so
+        // the hydration can enqueue (slug, locale) entries on
+        // each successful run. Without this, GameHydrationService
+        // falls back to a no-op translation pipeline and the
+        // /admin/translate endpoint has nothing to drain.
+        TranslationService translationService = buildTranslationService(
+                firebaseClient, new FirebaseMapper(clock), clock, props);
         GameHydrationService hydration = new GameHydrationService(
                 firebaseClient, new FirebaseMapper(clock),
-                gameLookup, merger, validator, refreshPolicy, clock,
+                gameLookup, merger, validator, refreshPolicy,
+                translationService, clock,
                 props.refreshMaxRetries());
         RefreshLock lock = new InMemoryRefreshLock();
         RefreshService refreshService = new RefreshService(lock, hydration, clock);
-        TranslationService translationService = buildTranslationService(
-                firebaseClient, new FirebaseMapper(clock), clock, props);
         com.cheapquest.backend.service.GameIngestService ingestService =
                 new com.cheapquest.backend.service.GameIngestService(
                         firebaseClient, new FirebaseMapper(clock), clock);

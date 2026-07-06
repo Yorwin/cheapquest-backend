@@ -165,6 +165,12 @@ public final class App {
 			return;
 		}
 
+		if ("enqueue-all".equals(mode)) {
+			runEnqueueAll(firebaseClient);
+			log.info("enqueue_all_end");
+			return;
+		}
+
         for (HardcodedGame game : GameFixtures.all()) {
             runCombinedAggregation(service, rawgService, validator, merger, game);
         }
@@ -253,6 +259,44 @@ public final class App {
             log.warn("validate_inconsistent slug={} stored_missing={} actual_missing={} expected_status={} stored_status={}",
                     inc.slug(), inc.storedMissing(), inc.actualMissing(), inc.expectedStatus(), inc.storedStatus());
         }
+    }
+
+    /**
+     * Operator-driven mass-enqueue: walks the entire {@code games}
+     * collection and adds every slug to {@code pending/}, so a
+     * subsequent {@code POST /admin/refresh} (with
+     * {@code force=true}) re-hydrates the whole catalog with the
+     * current code path. {@code addToPending} is idempotent so a
+     * re-run is safe.
+     */
+    private static void runEnqueueAll(FirebaseClient firebaseClient) {
+        if (firebaseClient == null) {
+            log.warn("enqueue_all_abort reason=firebase_not_ready");
+            return;
+        }
+        log.info("enqueue_all_start");
+        int total = 0;
+        int enqueued = 0;
+        int failed = 0;
+        for (com.cheapquest.backend.dto.firebase.GameDocumentDto doc : firebaseClient.readAll()) {
+            total++;
+            String slug = doc.slug();
+            if (slug == null || slug.isBlank()) {
+                log.warn("enqueue_all_skip reason=blank_slug");
+                continue;
+            }
+            try {
+                firebaseClient.addToPending(slug);
+                enqueued++;
+                log.info("enqueue_all_ok slug={}", slug);
+            } catch (RuntimeException e) {
+                failed++;
+                log.error("enqueue_all_failed slug={} error={}: {}",
+                        slug, e.getClass().getSimpleName(), e.getMessage());
+            }
+        }
+        log.info("enqueue_all_done total={} enqueued={} failed={}",
+                total, enqueued, failed);
     }
 
     private static void runServe(FirebaseClient firebaseClient,

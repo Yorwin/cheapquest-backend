@@ -112,6 +112,52 @@ LocalizedGame
 Language (enum): ES, EN, FR
 ```
 
+### Sections (subcolección `sections/{YYYY-MM-DD}/items/{slug}` + `sections/latest/items/{slug}`)
+
+```
+SectionName (enum): POPULARES, NUEVAS_OFERTAS, VINTAGE, MEJORES_PROMOS, BAJOS_HISTORICOS
+ ├── slug()        # wire-format: kebab-case ("mejores-promos", "nuevas-ofertas", ...)
+ └── fromSlug()    # reverse lookup, Optional<SectionName>
+
+SectionSnapshot
+ ├── name (SectionName)
+ ├── date (LocalDate, UTC)
+ ├── computedAt (Instant)
+ ├── totalCandidates (int)         # post-filter, pre-limit
+ └── items: List<SectionItem>
+
+SectionItem
+ ├── slug (String)
+ ├── title (String)
+ ├── bestDeal (Offer, dominio)      # NO OfferDto: el mapper convierte en el límite
+ ├── score (BigDecimal)            # sección-específico; mayor = mejor
+ └── extra: Map<String, String>    # hints legibles: "savingsPct=66.70", "year=2014", ...
+
+GameView                          # input de los SectionBuilder
+ ├── slug (String)
+ ├── title (String)
+ ├── cheapshark (CheapsharkView, nullable)
+ └── rawg (RawgView, nullable)
+
+CheapsharkView
+ ├── synced (boolean)
+ ├── bestDeal (Offer, nullable)
+ ├── cheapestEver (BigDecimal, nullable)
+ └── offers: List<Offer>
+
+RawgView (v1, crecerá con 'populares')
+ ├── released (String, ISO)         # nullable
+ ├── metacritic (Integer, 0-100)    # nullable
+ └── rating (Double, 0-5)          # nullable
+```
+
+**Reglas:**
+- `SectionItem.bestDeal` es SIEMPRE la mejor oferta del juego (la que `GameDeals.bestDeal` ya calculó). Un juego aparece como máximo una vez por sección aunque tenga 10 tiendas.
+- `SectionSnapshot.totalCandidates` es el tamaño del set post-filtro y pre-límite: permite distinguir "sección corta porque el catálogo es pequeño" de "sección corta porque casi todo se filtró".
+- `extra` es por-sección; las claves son estables por sección pero el contenido no (un builder puede añadir las suyas). Los valores son strings formateados.
+- `score` es por-sección: el MejoresPromosBuilder lo usa para guardar el `savings` (0-100), un builder de "populares" lo usaría para una composite 0-1. El consumidor NO puede asumir rango fijo.
+- Los builders son **puros**: leen `SectionContext.catalog` y devuelven `BuildResult(totalCandidates, items)`. Sin I/O.
+
 ### Reglas del modelo
 - `Game.name`, `Game.description`, `Game.developer`, `Game.publisher`, todos los `Review.text`, todos los `Tag.name` y todos los `Genre.name` se guardan en **inglés** (source of truth de RAWG).
 - `Game.localized` se rellena con DeepL y solo contiene los idiomas efectivamente traducidos.
@@ -135,6 +181,14 @@ Language (enum): ES, EN, FR
 | Firestore | SET | `/games/{lang}/{id}` | Upsert resultado | `FirebaseClient.upsert` |
 | Firestore | SET | `/games/failed/{id}` | DLQ de fallos | `FirebaseClient.moveToFailed` |
 | Firestore | SET | `/admin/lock` | Lock single-flight del refresh | `FirebaseClient.acquireLock` |
+| Firestore | GET | `/sections/{YYYY-MM-DD}/items/{slug}` | Lee snapshot histórico | `FirestoreSectionStore.read` |
+| Firestore | GET | `/sections/latest/items/{slug}` | Lee mirror live | `FirestoreSectionStore.readLatest` |
+| Firestore | GET | `/sections/latest/items/*` (collection) | Lee las 5 secciones live en un solo get | `FirestoreSectionStore.readAllLatest` |
+| Firestore | SET | `sections/{YYYY-MM-DD}/items/{slug}` + `sections/latest/items/{slug}` (batch atómico) | Upsert de snapshot | `FirestoreSectionStore.write` |
+| Endpoint | POST | `/admin/sections` | Recompute de las 5 secciones (bearer) | `AdminSectionsEndpoint` |
+| Endpoint | POST | `/admin/sections/{name}` | Recompute de una sección (bearer) | `AdminOneSectionEndpoint` |
+| Endpoint | GET | `/sections` | Lista de las 5 secciones con su último snapshot | `PublicSectionsListEndpoint` |
+| Endpoint | GET | `/sections/{name}?date=YYYY-MM-DD\|live` | Lee un snapshot (público, sin auth) | `PublicSectionReadEndpoint` |
 
 ### Detalles importantes
 - RAWG requiere `?key={RAWG_API_KEY}` en cada request.
@@ -309,6 +363,74 @@ GET /health
 ```
 Sin auth, para liveness checks.
 
+### Recompute diario de secciones (cron externo, 00:00 UTC)
+
+El pipeline de `SectionsService` computa 5 snapshots diarios sobre la colección `games/` ya hidratada (sin llamadas a CheapShark/RAWG: la pipeline es offline). Cada snapshot se escribe atómicamente a `sections/{YYYY-MM-DD}/items/{slug}` (history) y a `sections/latest/items/{slug}` (mirror live) en un único `WriteBatch`. La pipeline se dispara desde el sistema operativo a las 00:00 UTC.
+
+```
+POST /admin/sections
+Authorization: Bearer ${ADMIN_REFRESH_TOKEN}
+
+Body: (ignorado, siempre recomputa las 5)
+```
+
+- `200 OK` con `SectionsResponseDto` y un resumen por sección (`COMPLETED` / `SKIPPED_NO_BUILDER` / `FAILED`) más totales `processed` y `failed`. 200 siempre; las secciones que fallan van como `FAILED` en el resumen, no como 5xx.
+- `401 Unauthorized` si el token no coincide.
+- `409 Conflict` si ya hay un recompute en curso (lock single-flight independiente del de hidratación).
+- `500 Internal Server Error` con `ErrorResponse` si Firestore está caído u otro fallo no recuperable.
+
+**Disparador externo:**
+
+Windows (Task Scheduler):
+```powershell
+$headers = @{ Authorization = "Bearer TU_TOKEN" }
+Invoke-RestMethod -Method Post -Uri "http://localhost:8080/admin/sections" -Headers $headers
+```
+Configurado para correr a las 00:00 UTC diarias.
+
+Linux/macOS (cron):
+```bash
+0 0 * * * curl -X POST -H "Authorization: Bearer TU_TOKEN" http://localhost:8080/admin/sections
+```
+
+**Recompute de una sola sección** (mismo contrato, una sola `SectionName`):
+```
+POST /admin/sections/{name}
+Authorization: Bearer ${ADMIN_REFRESH_TOKEN}
+```
+- `name` es el slug kebab-case (`mejores-promos`, `nuevas-ofertas`, `vintage`, `populares`, `bajos-historicos`).
+- `200 OK` con `SectionsResponseDto` de un solo elemento.
+- `400 Bad Request` si el slug no corresponde a ninguna `SectionName` conocida.
+- `401` / `409` / `500` igual que arriba.
+
+### Lectura pública de secciones (sin auth)
+
+El front consume los snapshots precomputados; los endpoints son públicos y no requieren token.
+
+```
+GET /sections
+→ 200 OK {
+    "status": "ok",
+    "count": N,
+    "sections": [
+      { "name": "vintage",          "date": "2026-07-06", "totalCandidates": 8 },
+      { "name": "mejores-promos",   "date": "2026-07-06", "totalCandidates": 5 }
+    ]
+  }
+```
+Lista las 5 secciones en orden canónico `SectionName`. Las secciones nunca computadas se omiten del array (no devuelven 404 — el caller las trata como "no disponible"). El campo `count` es el tamaño del array.
+
+```
+GET /sections/{name}?date=YYYY-MM-DD|live
+→ 200 OK PublicSectionDto
+→ 400 Bad Request si el slug o la fecha son inválidos
+→ 404 Not Found si el doc no existe (la sección nunca se computó para esa fecha)
+```
+
+- `name` es el slug kebab-case.
+- `date` por defecto es `live` (lee el mirror). `?date=YYYY-MM-DD` lee el snapshot histórico de ese día.
+- El cuerpo es `PublicSectionDto` con `name, date, computedAt, totalCandidates, items[]`. Cada item lleva `slug, title, bestDeal, score, extra`.
+
 ---
 
 ## 9. Coding Standards
@@ -379,11 +501,18 @@ backend-cheapquest/
  │   │   │   │   ├── Tag.java
  │   │   │   │   ├── ValidationReport.java
  │   │   │   │   ├── LocalizedGame.java
- │   │   │   │   ├── GameField.java                      # enum
- │   │   │   │   ├── ValidationStatus.java               # enum
- │   │   │   │   ├── ReviewSource.java                   # enum
- │   │   │   │   └── Language.java                       # enum
- │   │   │   ├── dto/
+  │   │   │   │   ├── GameField.java                      # enum
+  │   │   │   │   ├── ValidationStatus.java               # enum
+  │   │   │   │   ├── ReviewSource.java                   # enum
+  │   │   │   │   ├── Language.java                       # enum
+  │   │   │   │   └── sections/                            # tipos del pipeline de secciones
+  │   │   │   │       ├── SectionName.java                 # enum
+  │   │   │   │       ├── SectionItem.java
+  │   │   │   │       ├── SectionSnapshot.java
+  │   │   │   │       ├── GameView.java
+  │   │   │   │       ├── CheapsharkView.java
+  │   │   │   │       └── RawgView.java
+  │   │   │   ├── dto/
  │   │   │   │   ├── cheapshark/
  │   │   │   │   │   ├── CheapSharkGameDto.java
  │   │   │   │   │   ├── CheapSharkDealDto.java
@@ -395,24 +524,54 @@ backend-cheapquest/
  │   │   │   │   │   └── RawgReviewDto.java
  │   │   │   │   ├── deepl/
  │   │   │   │   │   └── DeepLTranslationDto.java
- │   │   │   │   └── admin/
- │   │   │   │       ├── RefreshRequestDto.java
- │   │   │   │       └── RefreshResponseDto.java
- │   │   │   ├── mapper/
- │   │   │   │   ├── CheapSharkMapper.java
- │   │   │   │   ├── RawgMapper.java
- │   │   │   │   └── ReviewMerger.java
- │   │   │   ├── service/
- │   │   │   │   ├── GameAggregationService.java
- │   │   │   │   ├── ValidationService.java
- │   │   │   │   ├── TranslationService.java
- │   │   │   │   ├── BestDealCalculator.java
- │   │   │   │   └── FirebaseWriterService.java
- │   │   │   ├── endpoint/
- │   │   │   │   ├── AdminRefreshEndpoint.java
- │   │   │   │   ├── HealthEndpoint.java
- │   │   │   │   └── ErrorResponse.java
- │   │   │   └── exception/
+  │   │   │   │   └── admin/
+  │   │   │   │       ├── RefreshRequestDto.java
+  │   │   │   │       ├── RefreshResponseDto.java
+  │   │   │   │       └── SectionsResponseDto.java
+  │   │   │   │   ├── firebase/
+  │   │   │   │   │   └── sections/                        # DTOs Firestore del pipeline de secciones
+  │   │   │   │   │       ├── SectionSnapshotDto.java
+  │   │   │   │   │       └── SectionItemDto.java
+  │   │   │   │   └── public_/                              # DTOs públicos (sin auth)
+  │   │   │   │       ├── PublicSectionDto.java
+  │   │   │   │       └── PublicSectionListDto.java
+  │   │   │   ├── mapper/
+  │   │   │   │   ├── CheapSharkMapper.java
+  │   │   │   │   ├── RawgMapper.java
+  │   │   │   │   ├── ReviewMerger.java
+  │   │   │   │   ├── FirebaseMapper.java                  # GameDocumentDto + OfferDto
+  │   │   │   │   ├── OfferConverter.java                  # Offer <-> OfferDto (un solo lugar)
+  │   │   │   │   ├── SectionSnapshotMapper.java            # SectionSnapshot <-> SectionSnapshotDto
+  │   │   │   │   ├── GameViewMapper.java                  # GameDocumentDto -> GameView
+  │   │   │   │   └── PublicSectionMapper.java             # domain / Report -> public / admin DTO
+  │   │   │   ├── service/
+  │   │   │   │   ├── GameAggregationService.java
+  │   │   │   │   ├── ValidationService.java
+  │   │   │   │   ├── TranslationService.java
+  │   │   │   │   ├── BestDealCalculator.java
+  │   │   │   │   ├── FirebaseWriterService.java
+  │   │   │   │   └── sections/                            # pipeline de secciones (orquestador + persistencia + builders)
+  │   │   │   │       ├── SectionsLock.java                 # interfaz (in-memory por ahora)
+  │   │   │   │       ├── InMemorySectionsLock.java
+  │   │   │   │       ├── SectionStore.java                 # interfaz (Firestore-backed)
+  │   │   │   │       ├── FirestoreSectionStore.java
+  │   │   │   │       ├── SectionContext.java
+  │   │   │   │       ├── BuildResult.java
+  │   │   │   │       ├── SectionBuilder.java               # interfaz
+  │   │   │   │       ├── SectionsService.java              # orquestador (lock + catalog + dispatch)
+  │   │   │   │       └── builders/
+  │   │   │   │           └── MejoresPromosBuilder.java
+  │   │   │   ├── endpoint/
+  │   │   │   │   ├── AdminRefreshEndpoint.java
+  │   │   │   │   ├── HealthEndpoint.java
+  │   │   │   │   ├── ErrorResponse.java
+  │   │   │   │   └── sections/                            # endpoints HTTP de secciones
+  │   │   │   │       ├── SectionsPathUtils.java
+  │   │   │   │       ├── AdminSectionsEndpoint.java        # POST /admin/sections
+  │   │   │   │       ├── AdminOneSectionEndpoint.java      # POST /admin/sections/{name}
+  │   │   │   │       ├── PublicSectionReadEndpoint.java    # GET  /sections/{name}
+  │   │   │   │       └── PublicSectionsListEndpoint.java   # GET  /sections
+  │   │   │   └── exception/
  │   │   │       ├── GameNotFoundException.java
  │   │   │       ├── ApiUnavailableException.java
  │   │   │       ├── TranslationFailedException.java
@@ -474,6 +633,17 @@ translation.default-source=en
 # Refresh
 refresh.max-retries=3
 refresh.failed-cooldown-days=7
+
+# Sections: per-section item quotas. The defaults below match
+# AGENTS.md (populares=11, nuevas=8, vintage=8, mejores-promos=5,
+# bajos-historicos=5). The cron recomputes the five snapshots at
+# 00:00 UTC, writes to sections/{date}/items/{slug} for the history
+# and sections/latest/items/{slug} for the live mirror.
+sections.max-items.populares=11
+sections.max-items.nuevas-ofertas=8
+sections.max-items.vintage=8
+sections.max-items.mejores-promos=5
+sections.max-items.bajos-historicos=5
 ```
 
 ---

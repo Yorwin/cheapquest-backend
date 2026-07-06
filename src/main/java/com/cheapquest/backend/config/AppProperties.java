@@ -146,6 +146,10 @@ public final class AppProperties {
                 "translations-failed");
     }
 
+    public String firestoreCollectionSectionsPath() {
+        return props.getProperty("firestore.collection.sections-path", "sections");
+    }
+
     public int firestoreReadPageSize() {
         return Integer.parseInt(props.getProperty("firestore.read-page-size", "300"));
     }

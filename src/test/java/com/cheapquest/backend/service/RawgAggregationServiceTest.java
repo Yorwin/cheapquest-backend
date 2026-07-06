@@ -12,6 +12,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.mockito.ArgumentCaptor;
 
 import com.cheapquest.backend.client.RawgClient;
 import com.cheapquest.backend.domain.AggregatedGame;
@@ -211,9 +212,15 @@ class RawgAggregationServiceTest {
     }
 
     @Test
-    void aggregate_callsMoviesWhenCountGreaterThanZero() {
+    void aggregate_alwaysCallsMoviesEvenWhenCountIsZero() {
+        // RAWG's detail.moviesCount is sometimes stale (the
+        // counter is 0 but /games/{slug}/movies has data, or
+        // vice versa for very recent edits). The aggregation
+        // always calls the endpoint so the mapper has a chance
+        // to pick a trailer from the sub-list; if RAWG returns
+        // an empty list we fall through to the clip or null.
         var portal = RawgDtoFixtures.minimalGame("portal", "Portal");
-        var detail = RawgDtoFixtures.detailWithCounts("portal", "Portal", 0, 0, 2, 0);
+        var detail = RawgDtoFixtures.detailWithCounts("portal", "Portal", 0, 0, 0, 0);
         var rawg = stubDetails("portal", "Portal");
 
         when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
@@ -226,6 +233,35 @@ class RawgAggregationServiceTest {
         service.aggregate("Portal");
 
         verify(client, times(1)).getMovies("portal");
+    }
+
+    @Test
+    void aggregate_passesNonEmptyMoviesToMapper() {
+        // Happy path: RAWG returns one movie. The service
+        // must hand it to the mapper so pickTrailerUrl can
+        // project the URL.
+        var portal = RawgDtoFixtures.minimalGame("portal", "Portal");
+        var detail = RawgDtoFixtures.detailWithCounts("portal", "Portal", 0, 0, 0, 0);
+        var rawg = stubDetails("portal", "Portal");
+        var movie = mock(com.cheapquest.backend.dto.rawg.RawgMovieDto.class);
+        var movieData = mock(com.cheapquest.backend.dto.rawg.RawgMovieDataDto.class);
+        when(movieData.max()).thenReturn("https://cdn.example.com/trailer.mp4");
+        when(movie.data()).thenReturn(movieData);
+
+        when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
+        when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
+        lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
+        when(client.getDetails("portal")).thenReturn(Optional.of(detail));
+        when(client.getMovies("portal")).thenReturn(List.of(movie));
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList(), any())).thenReturn(rawg);
+
+        service.aggregate("Portal");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<com.cheapquest.backend.dto.rawg.RawgMovieDto>> captor =
+                ArgumentCaptor.forClass(List.class);
+        verify(mapper).toDetails(eq(detail), captor.capture(), anyList(), anyList(), anyList(), any());
+        assertThat(captor.getValue()).containsExactly(movie);
     }
 
     @Test

@@ -73,8 +73,15 @@ public final class RawgAggregationService {
                 () -> client.getDevelopmentTeam(detail.slug()),
                 "development-team");
 
+        // The detail response's moviesCount is sometimes stale
+        // (e.g. 0 when /games/{slug}/movies actually has data, or
+        // the other way around for very recent edits), so we
+        // always call the endpoint and let the mapper project
+        // the result. The cost is one extra round-trip per
+        // game; the upside is no false-negative when the
+        // counter is wrong.
         List<RawgMovieDto> movies = safeFetch(
-                detail.moviesCount() > 0,
+                true,
                 () -> client.getMovies(detail.slug()),
                 "movies");
 

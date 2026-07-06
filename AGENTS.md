@@ -163,6 +163,40 @@ RawgView (v1, crecerá con 'populares')
 - `Game.localized` se rellena con DeepL y solo contiene los idiomas efectivamente traducidos.
 - `bestDeal` se calcula siempre desde `stores`, no se persiste independientemente.
 
+### RAWG 3-way merge (search + slug + id)
+
+`RawgAggregationService.aggregate` ya no se queda con un único payload: dispara dos llamadas `/games/...` y un merge tolerante para que la página del juego tenga toda la información posible. La razón por la que hay dos detalles es la siguiente:
+
+- **`getDetails(slug)`** es **mandatory**: sostiene la fase temprana de la hidratación, donde lo único conocido del juego es el slug. Si devuelve 404, `GameNotFoundException` y el juego va a `/games/failed` (contrato intacto).
+- **`getDetails(id)`** (con el `id` que vino en la respuesta de la search) es **best-effort**: si falla con 5xx / 404 / 429 / `RuntimeException`, `RawgAggregationService` loggea `WARN rawg_details_by_id_failed id=… status=…` y continúa con la unión de search + slug. La pipeline no se rompe por un id-based call que falla.
+
+Las dos llamadas devuelven prácticamente el mismo payload en RAWG (id y slug resuelven al mismo recurso), pero el merge existe por defensa: si RAWG cambiase el shape entre endpoints, o si un futuro campo solo apareciese en uno, el merge lo absorbe sin tocar la pipeline.
+
+```
+RawgAggregationService.aggregate(name)
+  ├─ searchByName(name)                  → picked  (search DTO)
+  ├─ getDetails(picked.slug())           → detail  (slug DTO, mandatory)
+  ├─ safeGetDetailsById(picked.id())     → idOpt   (id DTO, best-effort)
+  ├─ merge = idOpt.isPresent()
+  │       ? mergeSearchAndDetails(picked, detail, idOpt.get())
+  │       : detail                       ← short-circuit si la id call falló
+  └─ toDetails(merged, …)                ← el resto de la pipeline
+```
+
+`mergeSearchAndDetails(search, detailsBySlug, detailsById)` en `RawgMapper` aplica estas reglas (todas en un único punto, testeadas en `RawgMapperMergeTest`):
+
+- **Precedencia de escalares**: `detailsById > detailsBySlug > search`. Si la fuente preferente es `null`/blank/0, cae a la siguiente. Si dos fuentes no-blank discrepan, gana la preferente y se loggea `WARN rawg_field_mismatch field=X winningSource=id|slug|search idValue=… slugValue=…`.
+- **Listas con `id`**: unión deduplicada por id, en orden `id-only → slug-only → search-only`. Las plataformas y los shortScreenshots tienen claves en records anidados, así que tienen helpers dedicados (`unionPlatforms`, `unionShortScreenshots`); los stores usan clave `long`, así que `unionByStoreId` con `Map<Long, …>`.
+- **Listas de strings** (`alternativeNames`): unión por `equals`, mismo orden.
+- **Counts** (`additionsCount`, `ratingsCount`, `parentsCount`, …, `suggestionsCount`): `max(a, b, c)`, sin WARN. RAWG puede quedarse corto unos minutos entre una sub-llamada y el `getDetails` padre; los counters son ruido permisivo.
+- **Mapas** (`addedByStatus`, `reactions`): `mergeIntMap` con `max` por clave, claves unidas. Los contadores de popularidad solo crecen.
+- **Booleans** (`tba`): OR entre las tres fuentes. Si cualquiera dice TBA, el juego es TBA.
+- **Identidad** (`id`, `slug`): se asume consistencia; si difieren se loggea `WARN rawg_id_mismatch idById=… idBySlug=… - keeping id-based` y gana la preferente.
+
+Los `addedByStatus` y `reactions` que aparecen en el `RawgDetails`/`RawgDocumentDto` final vienen del `mergeIntMap` (no de un pick escalar). Las poblaciones de listas se manejan en `RawgMapper.toDetails` con los helpers `toRatings`, `toClip`, `toEsrbRating`, `toStoreRef`, `toStoreEntries`, `toScreenshots`; los nuevos records de dominio `RawgRating`, `RawgClip`, `RawgEsrbRating`, `RawgStoreRef`, `RawgStoreEntry`, `RawgScreenshot` mirrorean los DTOs de RAWG (descartando los campos que no se persisten, igual que `RawgGenre`/`RawgTag`/etc.).
+
+El resultado del merge se pasa luego a `mapper.toDetails(merged, …)` y desde ahí a `FirebaseMapper.toDocumentDto`, así que toda la información de RAWG que no estaba en el record original de 26 campos llega a Firestore con tipos explícitos. `RawgView` (proyección para los sections builders) gana a su vez `ratingsCount`, `additionsCount`, `addedByStatus`, `reactions`, `suggestionsCount` para que el "populares" builder los pueda ordenar.
+
 ---
 
 ## 4. API Mapping
@@ -172,10 +206,14 @@ RawgView (v1, crecerá con 'populares')
 | CheapShark | GET | `/games?title={name}` | Búsqueda por nombre | `CheapSharkClient.findByTitle` |
 | CheapShark | GET | `/games?id={id}` | Detalle + deals | `CheapSharkClient.getDetails` |
 | CheapShark | GET | `/stores` | Catálogo de tiendas | `CheapSharkClient.getStores` |
-| RAWG | GET | `/games/{slug}` | Detalle completo | `RawgClient.getDetails` |
+| RAWG | GET | `/games?search={name}` | Búsqueda por nombre (devuelve id + slug + summary) | `RawgClient.searchByName` |
+| RAWG | GET | `/games/{slug}` | Detalle completo (mandatory, fase temprana) | `RawgClient.getDetails` |
+| RAWG | GET | `/games/{id}` | Detalle completo (best-effort, segunda call tras el merge) | `RawgClient.getDetails` |
 | RAWG | GET | `/games/{slug}/screenshots` | Capturas | `RawgClient.getScreenshots` |
 | RAWG | GET | `/games/{slug}/movies` | Trailer | `RawgClient.getMovies` |
 | RAWG | GET | `/games/{slug}/reviews` | Reviews | `RawgClient.getReviews` |
+| RAWG | GET | `/games/{slug}/additions` | DLCs / sibling games | `RawgClient.getAdditions` |
+| RAWG | GET | `/games/{slug}/development-team` | Creadores | `RawgClient.getDevelopmentTeam` |
 | DeepL | POST | `/v2/translate` | Traducción de textos | `DeepLClient.translate` |
 | Firestore | GET | `/games/pending` | Lista de juegos a procesar | `FirebaseClient.readPending` |
 | Firestore | SET | `/games/{lang}/{id}` | Upsert resultado | `FirebaseClient.upsert` |
@@ -194,8 +232,9 @@ RawgView (v1, crecerá con 'populares')
 - RAWG requiere `?key={RAWG_API_KEY}` en cada request.
 - CheapShark **no** requiere API key.
 - DeepL free plan → base URL `https://api-free.deepl.com`; Pro → `https://api.deepl.com`. Configurable en `application.properties`.
-- Cada `RawgClient` debe recibir `slug` y devolver un `Game` parcial; el ensamblado final lo hace `GameAggregationService`.
-- Rate limiting: CheapShark permite ~5 req/s sin auth; RAWG ~5 req/s con auth; DeepL free ~500k chars/mes. `RawgClient` y `CheapSharkClient` deben implementar backoff exponencial en `429`/`503`.
+- `RawgClient.getDetails` se invoca **dos veces** por hidratación: una con el slug (mandatory, contrato intacto) y otra con el id (best-effort, complementa la primera vía `RawgMapper.mergeSearchAndDetails`). El id se toma de la respuesta del `searchByName` previo. Ver §3 "RAWG 3-way merge".
+- Cada `RawgClient` debe recibir `slug` o `id` y devolver un `Game` parcial; el ensamblado final lo hace `GameAggregationService`.
+- Rate limiting: CheapShark permite ~5 req/s sin auth; RAWG ~5 req/s con auth; DeepL free ~500k chars/mes. `RawgClient` y `CheapSharkClient` deben implementar backoff exponencial en `429`/`503`. La doble call RAWG duplica el presupuesto por juego pero, al ser best-effort la segunda, no introduce un cuello de botella nuevo bajo carga.
 
 ---
 
@@ -206,17 +245,20 @@ Para cada `gameId` en `/games/pending`:
 1. **Lectura**: `FirebaseClient.readPending()` devuelve `List<String>` con los slugs/IDs.
 2. **Búsqueda CheapShark**: `CheapSharkClient.findByTitle(game.name)` → mejor match por título (heurística: igualdad case-insensitive; fallback Levenshtein si RAWG devuelve 404).
 3. **Detalle CheapShark**: `CheapSharkClient.getDetails(match.gameId)` → `List<Store>` (ofertas).
-4. **Detalle RAWG**: `RawgClient.getDetails(slug)` → `Game` parcial con metadata, genres, tags, description, etc.
-5. **Multimedia RAWG**: `RawgClient.getScreenshots(slug)` y `getMovies(slug)` → `List<String>` y `trailerUrl`.
-6. **Reviews RAWG**: `RawgClient.getReviews(slug)` → `List<Review>`.
-7. **Reviews CheapShark**: añadir desde `CheapSharkClient.getDeals(gameId).reviews` si vienen.
-8. **ReviewMerger**: fusiona ambas listas. Si mismo `externalId` o `author`, RAWG sobrescribe CheapShark. Resto se concatenan.
-9. **BestDealCalculator**: `stores.stream().max(Comparator.comparing(Store::savings))`.
-10. **Ensamblado**: `Game` final con `stores`, `bestDeal`, `reviews`, `screenshots`, `trailerUrl`, `validationReport=null` de momento.
-11. **Validación**: `ValidationService.evaluate(game)` → `ValidationReport` con `missingFields` exacto.
-12. **Traducción**: `TranslationService.translate(game, Language.ES)` y `translate(game, Language.FR)`. `Language.EN` queda como está.
-13. **Persistencia**: `FirebaseWriterService.upsert(game, lang)` por cada idioma **solo si** `validationReport.status != EMPTY`. Si `status == EMPTY`, `moveToFailed(game, error)`.
-14. **Limpieza**: si todo OK, eliminar el `gameId` de `/games/pending` (best-effort, log si falla).
+4. **Búsqueda RAWG**: `RawgClient.searchByName(name)` → `picked` (con `id` + `slug` + summary).
+5. **Detalle RAWG (mandatory, fase temprana)**: `RawgClient.getDetails(picked.slug)` → `detailBySlug`. Si 404 → `GameNotFoundException` y a `/games/failed` (contrato intacto).
+6. **Detalle RAWG (best-effort, segunda call)**: `safeGetDetailsById(picked.id)` → `detailById`. Si 5xx / 404 / 429 / `RuntimeException` → WARN `rawg_details_by_id_failed` y se continúa con la unión de search + slug.
+7. **Merge tolerante**: `mapper.mergeSearchAndDetails(picked, detailBySlug, detailById)` produce un único `RawgGameDto` con la unión deduplicada (precedencia `id > slug > search`, listas por id, counts `max`, maps `mergeIntMap` con `max` por clave, booleans OR). Ver §3 "RAWG 3-way merge".
+8. **Multimedia RAWG**: `RawgClient.getScreenshots(merged.slug)` y `getMovies(merged.slug)` → `List<String>` y `trailerUrl`. Sub-fetches usan `merged.slug()` por si el merge cambió algo.
+9. **Reviews RAWG**: `RawgClient.getReviews(merged.slug)` → `List<Review>`.
+10. **Reviews CheapShark**: añadir desde `CheapSharkClient.getDeals(gameId).reviews` si vienen.
+11. **ReviewMerger**: fusiona ambas listas. Si mismo `externalId` o `author`, RAWG sobrescribe CheapShark. Resto se concatenan.
+12. **BestDealCalculator**: `stores.stream().max(Comparator.comparing(Store::savings))`.
+13. **Ensamblado**: `Game` final con `stores`, `bestDeal`, `reviews`, `screenshots`, `trailerUrl`, `validationReport=null` de momento. La info de RAWG sale de `mapper.toDetails(merged, …)` (23 campos extra del merge).
+14. **Validación**: `ValidationService.evaluate(game)` → `ValidationReport` con `missingFields` exacto.
+15. **Traducción**: `TranslationService.translate(game, Language.ES)` y `translate(game, Language.FR)`. `Language.EN` queda como está.
+16. **Persistencia**: `FirebaseWriterService.upsert(game, lang)` por cada idioma **solo si** `validationReport.status != EMPTY`. Si `status == EMPTY`, `moveToFailed(game, error)`.
+17. **Limpieza**: si todo OK, eliminar el `gameId` de `/games/pending` (best-effort, log si falla).
 
 ---
 
@@ -446,6 +488,7 @@ Aplicar el skill `java-coding-standards` (en `.agents/skills/java-coding-standar
 - Excepciones unchecked específicas de dominio: `GameNotFoundException`, `ApiUnavailableException`, `TranslationFailedException`, `FirebaseUnavailableException`.
 - `GlobalExceptionHandler` (centralizado, invocado desde los endpoints HTTP) mapea cada excepción a un `ErrorResponse { code, message, timestamp }` con el código HTTP apropiado.
 - **Prohibido** `catch (Exception ex) { /* silently */ }`. Log con SLF4J y rethrow, o manejo explícito.
+- **Best-effort sub-fetches**: los helpers `safeFetch(boolean, Supplier, label)` (poblado por `additions`/`creators`/`movies`/`screenshots`) y `safeGetDetailsById(int)` (poblado por la 2ª call RAWG) devuelven `List.of()` / `Optional.empty()` ante 404/5xx/rate-limit y ante `RuntimeException` no-`ApiUnavailableException`, loggeando `WARN rawg_subfetch_failed` o `WARN rawg_details_by_id_failed`. La pipeline no se rompe por un sub-fetch individual.
 
 ### Optional y nulls
 - Métodos `find*` devuelven `Optional<T>`.

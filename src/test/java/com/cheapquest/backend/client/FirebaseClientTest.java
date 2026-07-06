@@ -15,6 +15,8 @@ import com.cheapquest.backend.dto.firebase.GameDocumentDto;
 import com.cheapquest.backend.dto.firebase.HydrationPatch;
 import com.cheapquest.backend.dto.firebase.LocaleBlock;
 import com.cheapquest.backend.dto.firebase.RawgBlock;
+import com.cheapquest.backend.dto.firebase.TranslationFailedDoc;
+import com.cheapquest.backend.dto.firebase.TranslationPendingDoc;
 import com.cheapquest.backend.dto.firebase.ValidationReportDto;
 import com.cheapquest.backend.exception.DocumentNotFoundException;
 import com.cheapquest.backend.exception.FirebaseUnavailableException;
@@ -59,10 +61,16 @@ class FirebaseClientTest {
                 .thenReturn(mock(CollectionReference.class));
         org.mockito.Mockito.lenient().when(firestore.collection("failed"))
                 .thenReturn(mock(CollectionReference.class));
+        org.mockito.Mockito.lenient().when(firestore.collection("translations-pending"))
+                .thenReturn(mock(CollectionReference.class));
+        org.mockito.Mockito.lenient().when(firestore.collection("translations-failed"))
+                .thenReturn(mock(CollectionReference.class));
         props = mock(AppProperties.class);
         when(props.firestoreCollectionGamesPath()).thenReturn("games");
         when(props.firestoreCollectionPendingPath()).thenReturn("pending");
         when(props.firestoreCollectionFailedPath()).thenReturn("failed");
+        when(props.firestoreCollectionTranslationPendingPath()).thenReturn("translations-pending");
+        when(props.firestoreCollectionTranslationFailedPath()).thenReturn("translations-failed");
         when(props.firestoreReadPageSize()).thenReturn(300);
         client = new FirebaseClient(firestore, props);
     }
@@ -679,6 +687,186 @@ class FirebaseClientTest {
         verify(failedRef).set(captor.capture());
         assertThat(captor.getValue()).isEqualTo(doc);
         verify(pendingRef).delete();
+    }
+
+    @Test
+    void enqueueTranslation_createsFirstAttemptDoc() throws Exception {
+        CollectionReference translationPending = mock(CollectionReference.class);
+        DocumentReference ref = mock(DocumentReference.class);
+        when(firestore.collection("translations-pending")).thenReturn(translationPending);
+        when(translationPending.document("portal_es")).thenReturn(ref);
+        SettableApiFuture<WriteResult> future = SettableApiFuture.create();
+        future.set(mock(WriteResult.class));
+        when(ref.create(any(TranslationPendingDoc.class))).thenReturn(future);
+
+        Instant now = Instant.parse("2026-06-30T10:00:00Z");
+        client.enqueueTranslation("portal", "es", now);
+
+        ArgumentCaptor<TranslationPendingDoc> captor =
+                ArgumentCaptor.forClass(TranslationPendingDoc.class);
+        verify(ref).create(captor.capture());
+        assertThat(captor.getValue().slug()).isEqualTo("portal");
+        assertThat(captor.getValue().locale()).isEqualTo("es");
+        assertThat(captor.getValue().sourceFetchedAt()).isEqualTo(now);
+        assertThat(captor.getValue().attempts()).isEqualTo(1);
+        assertThat(captor.getValue().lastError()).isNull();
+    }
+
+    @Test
+    void enqueueTranslation_isNoOpWhenAlreadyExists() {
+        CollectionReference translationPending = mock(CollectionReference.class);
+        DocumentReference ref = mock(DocumentReference.class);
+        when(firestore.collection("translations-pending")).thenReturn(translationPending);
+        when(translationPending.document("portal_es")).thenReturn(ref);
+        SettableApiFuture<WriteResult> future = SettableApiFuture.create();
+        future.setException(FirestoreException.forServerRejection(Status.ALREADY_EXISTS, "dup"));
+        when(ref.create(any(TranslationPendingDoc.class))).thenReturn(future);
+
+        // No exception expected: a duplicate enqueue is a no-op so
+        // the per-attempt counter is not reset on every refresh.
+        client.enqueueTranslation("portal", "es", Instant.now());
+    }
+
+    @Test
+    void readTranslationPending_returnsListOfEntries() throws Exception {
+        TranslationPendingDoc p1 = new TranslationPendingDoc(
+                "portal", "es", Instant.parse("2026-06-30T10:00:00Z"), 1, Instant.now(), null);
+        TranslationPendingDoc p2 = new TranslationPendingDoc(
+                "hl2", "fr", Instant.parse("2026-06-30T11:00:00Z"), 2, Instant.now(), "blip");
+
+        QueryDocumentSnapshot d1 = mockQueryDoc("portal", "Portal");
+        QueryDocumentSnapshot d2 = mockQueryDoc("hl2", "Half-Life 2");
+        when(d1.toObject(TranslationPendingDoc.class)).thenReturn(p1);
+        when(d2.toObject(TranslationPendingDoc.class)).thenReturn(p2);
+
+        Query orderedQuery = mock(Query.class);
+        QuerySnapshot snapshot = mock(QuerySnapshot.class);
+        when(snapshot.getDocuments()).thenReturn(List.of(d1, d2));
+        SettableApiFuture<QuerySnapshot> future = SettableApiFuture.create();
+        future.set(snapshot);
+        when(orderedQuery.get()).thenReturn(future);
+
+        CollectionReference translationPending = mock(CollectionReference.class);
+        when(firestore.collection("translations-pending")).thenReturn(translationPending);
+        when(translationPending.orderBy(any(FieldPath.class))).thenReturn(orderedQuery);
+
+        List<TranslationPendingDoc> result = client.readTranslationPending();
+
+        assertThat(result).containsExactly(p1, p2);
+    }
+
+    @Test
+    void recordTranslationFailure_preservesSourceFetchedAt() throws Exception {
+        Instant sourceFetchedAt = Instant.parse("2026-06-30T10:00:00Z");
+        Instant lastAttemptAt = Instant.parse("2026-06-30T10:05:00Z");
+        TranslationPendingDoc current = new TranslationPendingDoc(
+                "portal", "es", sourceFetchedAt, 1, Instant.now(), null);
+
+        CollectionReference translationPending = mock(CollectionReference.class);
+        DocumentReference ref = mock(DocumentReference.class);
+        DocumentSnapshot snap = mock(DocumentSnapshot.class);
+        when(firestore.collection("translations-pending")).thenReturn(translationPending);
+        when(translationPending.document("portal_es")).thenReturn(ref);
+        when(ref.get()).thenReturn(snapFuture(snap));
+        when(snap.exists()).thenReturn(true);
+        when(snap.toObject(TranslationPendingDoc.class)).thenReturn(current);
+        SettableApiFuture<WriteResult> future = SettableApiFuture.create();
+        future.set(mock(WriteResult.class));
+        when(ref.set(any(TranslationPendingDoc.class))).thenReturn(future);
+
+        client.recordTranslationFailure("portal", "es", 2, lastAttemptAt, "blip");
+
+        ArgumentCaptor<TranslationPendingDoc> captor =
+                ArgumentCaptor.forClass(TranslationPendingDoc.class);
+        verify(ref).set(captor.capture());
+        // The critical invariant: sourceFetchedAt is NOT reset
+        // to the current attempt's now(); it stays bound to the
+        // original rawg.fetchedAt the enqueue recorded.
+        assertThat(captor.getValue().sourceFetchedAt()).isEqualTo(sourceFetchedAt);
+        assertThat(captor.getValue().attempts()).isEqualTo(2);
+        assertThat(captor.getValue().lastAttemptAt()).isEqualTo(lastAttemptAt);
+        assertThat(captor.getValue().lastError()).isEqualTo("blip");
+    }
+
+    @Test
+    void removeFromTranslationPending_deletesDoc() throws Exception {
+        CollectionReference translationPending = mock(CollectionReference.class);
+        DocumentReference ref = mock(DocumentReference.class);
+        when(firestore.collection("translations-pending")).thenReturn(translationPending);
+        when(translationPending.document("hl2_fr")).thenReturn(ref);
+        SettableApiFuture<WriteResult> future = SettableApiFuture.create();
+        future.set(mock(WriteResult.class));
+        when(ref.delete()).thenReturn(future);
+
+        client.removeFromTranslationPending("hl2", "fr");
+
+        verify(ref).delete();
+    }
+
+    @Test
+    void moveToTranslationFailed_writesFailedDocAndRemovesFromPending() throws Exception {
+        CollectionReference failedCol = mock(CollectionReference.class);
+        CollectionReference pendingCol = mock(CollectionReference.class);
+        DocumentReference failedRef = mock(DocumentReference.class);
+        DocumentReference pendingRef = mock(DocumentReference.class);
+        when(firestore.collection("translations-failed")).thenReturn(failedCol);
+        when(failedCol.document("portal_es")).thenReturn(failedRef);
+        when(firestore.collection("translations-pending")).thenReturn(pendingCol);
+        when(pendingCol.document("portal_es")).thenReturn(pendingRef);
+        SettableApiFuture<WriteResult> setFuture = SettableApiFuture.create();
+        setFuture.set(mock(WriteResult.class));
+        when(failedRef.set(any(TranslationFailedDoc.class))).thenReturn(setFuture);
+        SettableApiFuture<WriteResult> delFuture = SettableApiFuture.create();
+        delFuture.set(mock(WriteResult.class));
+        when(pendingRef.delete()).thenReturn(delFuture);
+
+        TranslationFailedDoc doc = new TranslationFailedDoc(
+                "portal", "es", 3,
+                Instant.parse("2026-06-30T10:00:00Z"),
+                Instant.parse("2026-06-30T10:05:00Z"),
+                "no such game");
+        client.moveToTranslationFailed(doc);
+
+        ArgumentCaptor<TranslationFailedDoc> captor =
+                ArgumentCaptor.forClass(TranslationFailedDoc.class);
+        verify(failedRef).set(captor.capture());
+        assertThat(captor.getValue()).isEqualTo(doc);
+        verify(pendingRef).delete();
+    }
+
+    @Test
+    void writeLocaleTranslation_writesDotNotationPartialUpdate() throws Exception {
+        DocumentReference ref = mock(DocumentReference.class);
+        when(gamesCollection.document("portal")).thenReturn(ref);
+        SettableApiFuture<WriteResult> future = SettableApiFuture.create();
+        future.set(mock(WriteResult.class));
+        when(ref.update(anyMap())).thenReturn(future);
+
+        Instant sourceFetchedAt = Instant.parse("2026-06-30T10:00:00Z");
+        Instant translatedAt = Instant.parse("2026-06-30T10:05:00Z");
+        client.writeLocaleTranslation(
+                "portal", "es",
+                "<p>Hola mundo</p>",
+                List.of("Acción", "Aventura"),
+                sourceFetchedAt, translatedAt);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(ref).update(captor.capture());
+        assertThat(captor.getValue())
+                .containsEntry("locales.es.synced", Boolean.TRUE)
+                .containsEntry("locales.es.updatedAt", "2026-06-30T10:05:00Z")
+                .containsEntry("locales.es.sourceFetchedAt", "2026-06-30T10:00:00Z")
+                .containsEntry("locales.es.description", "<p>Hola mundo</p>")
+                .containsEntry("locales.es.tags", List.of("Acción", "Aventura"))
+                .doesNotContainKey("locales.fr")
+                .hasSize(5);
+    }
+
+    private static SettableApiFuture<DocumentSnapshot> snapFuture(DocumentSnapshot snap) {
+        SettableApiFuture<DocumentSnapshot> f = SettableApiFuture.create();
+        f.set(snap);
+        return f;
     }
 
     /**

@@ -136,6 +136,16 @@ public final class AppProperties {
         return props.getProperty("firestore.collection.failed-path", "failed");
     }
 
+    public String firestoreCollectionTranslationPendingPath() {
+        return props.getProperty("firestore.collection.translation-pending-path",
+                "translations-pending");
+    }
+
+    public String firestoreCollectionTranslationFailedPath() {
+        return props.getProperty("firestore.collection.translation-failed-path",
+                "translations-failed");
+    }
+
     public int firestoreReadPageSize() {
         return Integer.parseInt(props.getProperty("firestore.read-page-size", "300"));
     }

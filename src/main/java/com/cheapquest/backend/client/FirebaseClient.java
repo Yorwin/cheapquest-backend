@@ -5,6 +5,7 @@ import com.cheapquest.backend.dto.firebase.FailedDoc;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
 import com.cheapquest.backend.dto.firebase.HydrationPatch;
 import com.cheapquest.backend.dto.firebase.PendingDoc;
+import com.cheapquest.backend.dto.firebase.TranslationPendingDoc;
 import com.cheapquest.backend.exception.DocumentNotFoundException;
 import com.cheapquest.backend.exception.FirebaseUnavailableException;
 import com.google.api.core.ApiFuture;
@@ -60,6 +61,8 @@ public final class FirebaseClient {
     private final String collectionPath;
     private final String pendingCollectionPath;
     private final String failedCollectionPath;
+    private final String translationPendingCollectionPath;
+    private final String translationFailedCollectionPath;
     private final int pageSize;
     private final int maxRetries;
     private final long baseDelayMillis;
@@ -69,6 +72,8 @@ public final class FirebaseClient {
                 props.firestoreCollectionGamesPath(),
                 props.firestoreCollectionPendingPath(),
                 props.firestoreCollectionFailedPath(),
+                props.firestoreCollectionTranslationPendingPath(),
+                props.firestoreCollectionTranslationFailedPath(),
                 props.firestoreReadPageSize(),
                 DEFAULT_MAX_RETRIES,
                 DEFAULT_BASE_DELAY_MILLIS);
@@ -76,6 +81,7 @@ public final class FirebaseClient {
 
     FirebaseClient(Firestore firestore, String collectionPath, int pageSize) {
         this(firestore, collectionPath, "pending", "failed",
+                "translations-pending", "translations-failed",
                 pageSize, DEFAULT_MAX_RETRIES, DEFAULT_BASE_DELAY_MILLIS);
     }
 
@@ -83,22 +89,28 @@ public final class FirebaseClient {
     FirebaseClient(Firestore firestore, String collectionPath, int pageSize,
             int maxRetries, long baseDelayMillis) {
         this(firestore, collectionPath, "pending", "failed",
+                "translations-pending", "translations-failed",
                 pageSize, maxRetries, baseDelayMillis);
     }
 
     FirebaseClient(Firestore firestore, String collectionPath,
             String pendingCollectionPath, String failedCollectionPath,
+            String translationPendingCollectionPath, String translationFailedCollectionPath,
             int pageSize, int maxRetries, long baseDelayMillis) {
         this.firestore = firestore;
         this.collectionPath = collectionPath;
         this.pendingCollectionPath = pendingCollectionPath;
         this.failedCollectionPath = failedCollectionPath;
+        this.translationPendingCollectionPath = translationPendingCollectionPath;
+        this.translationFailedCollectionPath = translationFailedCollectionPath;
         this.pageSize = pageSize;
         this.maxRetries = maxRetries;
         this.baseDelayMillis = baseDelayMillis;
         log.debug("firebase_client_initialized collectionPath={} pendingPath={} failedPath={} "
+                        + "translationPendingPath={} translationFailedPath={} "
                         + "pageSize={} maxRetries={} baseDelayMillis={}",
                 collectionPath, pendingCollectionPath, failedCollectionPath,
+                translationPendingCollectionPath, translationFailedCollectionPath,
                 pageSize, maxRetries, baseDelayMillis);
     }
 
@@ -229,6 +241,149 @@ public final class FirebaseClient {
         await("move-to-failed", doc.slug(), () -> failedRef.set(doc));
         DocumentReference pendingRef = firestore.collection(pendingCollectionPath).document(doc.slug());
         await("remove-pending-after-failed", doc.slug(), pendingRef::delete);
+    }
+
+    // ----- Translation queue (DeepL pipeline) -----------------------------
+
+    /**
+     * Enqueue a (slug, locale) pair for translation. Idempotent: if
+     * a pending entry already exists for the (slug, locale), the
+     * call is a no-op. Doc id is {@code "{slug}_{locale}"} so two
+     * concurrent enqueues from two hydration runs land on the same
+     * doc and the second one is rejected with ALREADY_EXISTS.
+     */
+    public void enqueueTranslation(String slug, String locale, java.time.Instant sourceFetchedAt) {
+        String docId = translationDocId(slug, locale);
+        DocumentReference ref = firestore.collection(translationPendingCollectionPath).document(docId);
+        try {
+            await("enqueue-translation", docId,
+                    () -> ref.create(TranslationPendingDoc.firstAttempt(slug, locale, sourceFetchedAt)));
+        } catch (FirebaseUnavailableException e) {
+            if (isAlreadyExists(e.getCause())) {
+                return;
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * Read every entry in the {@code translations-pending}
+     * collection. Result is materialised into a {@code List} so
+     * the caller can iterate it more than once without
+     * re-reading.
+     */
+    public List<com.cheapquest.backend.dto.firebase.TranslationPendingDoc> readTranslationPending() {
+        QuerySnapshot snapshot = await("reading-translation-pending",
+                translationPendingCollectionPath,
+                () -> firestore.collection(translationPendingCollectionPath)
+                        .orderBy(FieldPath.documentId())
+                        .get());
+        List<QueryDocumentSnapshot> docs = snapshot.getDocuments();
+        List<com.cheapquest.backend.dto.firebase.TranslationPendingDoc> result =
+                new ArrayList<>(docs.size());
+        for (QueryDocumentSnapshot d : docs) {
+            com.cheapquest.backend.dto.firebase.TranslationPendingDoc p =
+                    d.toObject(com.cheapquest.backend.dto.firebase.TranslationPendingDoc.class);
+            if (p != null) {
+                result.add(p);
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    /**
+     * Update the per-attempt counter on a translation pending
+     * entry. Writes the new doc over the existing one. Called
+     * by the translation pipeline after a non-fatal failure
+     * (e.g. a single DeepL call failed but the doc stays in
+     * the queue for the next round).
+     */
+    public void recordTranslationFailure(String slug, String locale,
+            int newAttempts, java.time.Instant lastAttemptAt, String lastError) {
+        String docId = translationDocId(slug, locale);
+        DocumentReference ref = firestore.collection(translationPendingCollectionPath).document(docId);
+        // Re-read the existing doc to preserve sourceFetchedAt: a
+        // partial update would clobber it and the next successful
+        // translation would write a stale sourceFetchedAt.
+        TranslationPendingDoc current = readOneTranslationPending(slug, locale);
+        if (current == null) {
+            // The doc was removed concurrently; just no-op rather
+            // than resurrect a stale entry.
+            return;
+        }
+        TranslationPendingDoc updated = new TranslationPendingDoc(
+                slug, locale, current.sourceFetchedAt(),
+                newAttempts, lastAttemptAt, lastError);
+        await("record-translation-failure", docId, () -> ref.set(updated));
+    }
+
+    /**
+     * Remove a (slug, locale) from the translation queue. Called
+     * after a successful translation.
+     */
+    public void removeFromTranslationPending(String slug, String locale) {
+        String docId = translationDocId(slug, locale);
+        DocumentReference ref = firestore.collection(translationPendingCollectionPath).document(docId);
+        await("remove-translation-pending", docId, ref::delete);
+    }
+
+    /**
+     * Move a (slug, locale) to the translation DLQ. Creates the
+     * {@code translations-failed} doc and removes the entry from
+     * {@code translations-pending} in one call.
+     */
+    public void moveToTranslationFailed(
+            com.cheapquest.backend.dto.firebase.TranslationFailedDoc doc) {
+        String docId = translationDocId(doc.slug(), doc.locale());
+        DocumentReference failedRef = firestore.collection(translationFailedCollectionPath).document(docId);
+        await("move-to-translation-failed", docId, () -> failedRef.set(doc));
+        DocumentReference pendingRef = firestore.collection(translationPendingCollectionPath).document(docId);
+        await("remove-translation-pending-after-failed", docId, pendingRef::delete);
+    }
+
+    /**
+     * Read a single translation pending entry, or {@code null}
+     * if it does not exist. Used by the failure path to preserve
+     * the original {@code sourceFetchedAt}.
+     */
+    public com.cheapquest.backend.dto.firebase.TranslationPendingDoc readOneTranslationPending(
+            String slug, String locale) {
+        String docId = translationDocId(slug, locale);
+        DocumentSnapshot snap = await("reading-translation-pending-one", docId,
+                () -> firestore.collection(translationPendingCollectionPath)
+                        .document(docId)
+                        .get());
+        if (!snap.exists()) {
+            return null;
+        }
+        return snap.toObject(com.cheapquest.backend.dto.firebase.TranslationPendingDoc.class);
+    }
+
+    /**
+     * Write the translated fields into the corresponding
+     * {@code LocaleBlock} on the game document. Uses a
+     * dot-notation partial update so the rest of the document
+     * (and the rest of the {@code locales} map) is untouched.
+     */
+    public void writeLocaleTranslation(String slug, String locale,
+            String descriptionTranslation, java.util.List<String> tagTranslations,
+            java.time.Instant sourceFetchedAt, java.time.Instant translatedAt) {
+        DocumentReference ref = gamesCollection().document(slug);
+        Map<String, Object> updates = new java.util.HashMap<>();
+        updates.put("locales." + locale + ".synced", Boolean.TRUE);
+        updates.put("locales." + locale + ".updatedAt", translatedAt.toString());
+        updates.put("locales." + locale + ".sourceFetchedAt", sourceFetchedAt.toString());
+        if (descriptionTranslation != null) {
+            updates.put("locales." + locale + ".description", descriptionTranslation);
+        }
+        if (tagTranslations != null) {
+            updates.put("locales." + locale + ".tags", tagTranslations);
+        }
+        await("write-locale-translation", slug + "/" + locale, () -> ref.update(updates));
+    }
+
+    private static String translationDocId(String slug, String locale) {
+        return slug + "_" + locale;
     }
 
     /**

@@ -1,6 +1,7 @@
 package com.cheapquest.backend;
 
 import com.cheapquest.backend.client.CheapSharkClient;
+import com.cheapquest.backend.client.DeepLClient;
 import com.cheapquest.backend.client.FirebaseClient;
 import com.cheapquest.backend.client.RawgClient;
 import com.cheapquest.backend.config.AppProperties;
@@ -16,6 +17,7 @@ import com.cheapquest.backend.domain.validation.ValidationReport;
 import com.cheapquest.backend.dto.cheapshark.CheapSharkStoreDto;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
 import com.cheapquest.backend.endpoint.AdminRefreshEndpoint;
+import com.cheapquest.backend.endpoint.AdminTranslateEndpoint;
 import com.cheapquest.backend.endpoint.HealthEndpoint;
 import com.cheapquest.backend.endpoint.HttpServerBootstrap;
 import com.cheapquest.backend.endpoint.InMemoryRefreshLock;
@@ -34,6 +36,7 @@ import com.cheapquest.backend.service.GameLookupService;
 import com.cheapquest.backend.service.GameMerger;
 import com.cheapquest.backend.service.RawgAggregationService;
 import com.cheapquest.backend.service.RefreshPolicy;
+import com.cheapquest.backend.service.TranslationService;
 import com.cheapquest.backend.service.ValidationConsistencyChecker;
 import com.cheapquest.backend.service.ValidationService;
 import com.google.cloud.firestore.Firestore;
@@ -140,6 +143,12 @@ public final class App {
 		if ("validate".equals(mode)) {
 			runValidate(firebaseClient);
 			log.info("validate_end");
+			return;
+		}
+
+		if ("translate".equals(mode)) {
+			runTranslate(firebaseClient, new FirebaseMapper(clock), clock, props);
+			log.info("translate_end");
 			return;
 		}
 
@@ -254,11 +263,15 @@ public final class App {
                 props.refreshMaxRetries());
         RefreshLock lock = new InMemoryRefreshLock();
         RefreshService refreshService = new RefreshService(lock, hydration, clock);
+        TranslationService translationService = buildTranslationService(
+                firebaseClient, new FirebaseMapper(clock), clock, props);
 
         java.util.Map<String, com.sun.net.httpserver.HttpHandler> routes = new java.util.LinkedHashMap<>();
         routes.put("/health", new HealthEndpoint(clock));
         routes.put("/admin/refresh", new AdminRefreshEndpoint(
                 props.adminRefreshToken(), refreshService, gson));
+        routes.put("/admin/translate", new AdminTranslateEndpoint(
+                props.adminRefreshToken(), translationService));
 
         try {
             com.sun.net.httpserver.HttpServer server = HttpServerBootstrap.start(
@@ -309,6 +322,45 @@ public final class App {
             throw new UnsupportedOperationException(
                     "pending recovery must not call lookupByTitle");
         }
+    }
+
+    private static void runTranslate(FirebaseClient firebaseClient,
+            FirebaseMapper firebaseMapper, Clock clock, AppProperties props) {
+        if (firebaseClient == null) {
+            log.warn("translate_abort reason=firebase_not_ready");
+            return;
+        }
+        TranslationService translationService = buildTranslationService(
+                firebaseClient, firebaseMapper, clock, props);
+        if (translationService == null) {
+            return;
+        }
+        int done = translationService.translateAll();
+        log.info("translate_summary done={} queue_size={}", done, 0);
+    }
+
+    private static TranslationService buildTranslationService(FirebaseClient firebaseClient,
+            FirebaseMapper firebaseMapper, Clock clock, AppProperties props) {
+        if (firebaseClient == null) {
+            log.warn("translate_abort reason=firebase_not_ready");
+            return null;
+        }
+        String deeplKey = props.deeplApiKey();
+        if (deeplKey == null || deeplKey.isBlank()) {
+            log.warn("translate_abort reason=deepl_api_key_missing");
+            return null;
+        }
+        // Empty deepl.base-url -> SDK auto-detects the endpoint
+        // from the API key suffix (":fx" -> free, no suffix -> pro).
+        DeepLClient deeplClient = new DeepLClient(
+                deeplKey, props.deeplBaseUrl(),
+                props.deeplBatchSize(),
+                java.time.Duration.ofHours(168).toMillis(),
+                10_000,
+                clock);
+        return new TranslationService(
+                firebaseClient, deeplClient, firebaseMapper, clock,
+                props.refreshMaxRetries());
     }
 
     private static List<CheapSharkStoreDto> loadStoresOrAbort(CheapSharkClient client) {

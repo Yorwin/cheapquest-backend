@@ -37,18 +37,26 @@ public interface DeepLTranslator {
             this.translator = buildTranslator(authKey, baseUrl);
         }
 
-        @SuppressWarnings("deprecation")
-        private static Translator buildTranslator(String authKey, String baseUrl) {
-            // The deepl-java team marks Translator @Deprecated in
-            // favour of DeepLClient, but DeepLClient only exposes the
-            // new "Write" API (rephraseText). The translation API is
-            // still on Translator, so we use it directly and silence
-            // the warning until the SDK exposes a non-deprecated
-            // translateText.
-            TranslatorOptions options = new TranslatorOptions()
-                    .setServerUrl(baseUrl);
-            return new Translator(authKey, options);
+    @SuppressWarnings("deprecation")
+    private static Translator buildTranslator(String authKey, String baseUrl) {
+        // The deepl-java team marks Translator @Deprecated in
+        // favour of DeepLClient, but DeepLClient only exposes the
+        // new "Write" API (rephraseText). The translation API is
+        // still on Translator, so we use it directly and silence
+        // the warning until the SDK exposes a non-deprecated
+        // translateText.
+        //
+        // If a base URL is supplied (e.g. for tests) we set it
+        // explicitly; otherwise we let the SDK auto-detect from
+        // the API key suffix (":fx" -> free endpoint, no suffix
+        // -> pro endpoint) so the user's existing plan keeps
+        // working without configuration.
+        TranslatorOptions options = new TranslatorOptions();
+        if (baseUrl != null && !baseUrl.isBlank()) {
+            options = options.setServerUrl(baseUrl);
         }
+        return new Translator(authKey, options);
+    }
 
         @Override
         public List<String> translate(List<String> texts, String targetLang) throws Exception {

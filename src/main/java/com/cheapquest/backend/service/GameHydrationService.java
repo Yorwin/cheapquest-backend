@@ -76,6 +76,7 @@ public final class GameHydrationService {
     private final GameMerger merger;
     private final ValidationService validator;
     private final RefreshPolicy refreshPolicy;
+    private final TranslationService translationService;
     private final Clock clock;
     private final int maxAttempts;
 
@@ -84,24 +85,36 @@ public final class GameHydrationService {
             GameMerger merger, ValidationService validator,
             RefreshPolicy refreshPolicy, Clock clock) {
         this(firebaseClient, firebaseMapper, gameLookup, merger, validator,
-                refreshPolicy, clock, 3);
+                refreshPolicy, null, clock, 3);
     }
 
     public GameHydrationService(FirebaseClient firebaseClient, FirebaseMapper firebaseMapper,
             GameLookup gameLookup,
             GameMerger merger, ValidationService validator,
-            RefreshPolicy refreshPolicy, Clock clock, int maxAttempts) {
+            RefreshPolicy refreshPolicy, TranslationService translationService,
+            Clock clock, int maxAttempts) {
         this.firebaseClient = Objects.requireNonNull(firebaseClient, "firebaseClient");
         this.firebaseMapper = Objects.requireNonNull(firebaseMapper, "firebaseMapper");
         this.gameLookup = Objects.requireNonNull(gameLookup, "gameLookup");
         this.merger = Objects.requireNonNull(merger, "merger");
         this.validator = Objects.requireNonNull(validator, "validator");
         this.refreshPolicy = Objects.requireNonNull(refreshPolicy, "refreshPolicy");
+        this.translationService = translationService;  // may be null in tests that don't translate
         this.clock = Objects.requireNonNull(clock, "clock");
         if (maxAttempts < 1) {
             throw new IllegalArgumentException("maxAttempts must be >= 1, got " + maxAttempts);
         }
         this.maxAttempts = maxAttempts;
+    }
+
+    // Old 8-arg constructor preserved for backwards compatibility
+    // with tests that don't exercise the translation trigger.
+    public GameHydrationService(FirebaseClient firebaseClient, FirebaseMapper firebaseMapper,
+            GameLookup gameLookup,
+            GameMerger merger, ValidationService validator,
+            RefreshPolicy refreshPolicy, Clock clock, int maxAttempts) {
+        this(firebaseClient, firebaseMapper, gameLookup, merger, validator,
+                refreshPolicy, null, clock, maxAttempts);
     }
 
     public HydrationReport hydrateAll() {
@@ -361,6 +374,14 @@ public final class GameHydrationService {
         // the (future) translation pipeline owns locales.es and
         // locales.fr without the hydration path clobbering them.
         firebaseClient.markLocaleSynced(slug, "en", Instant.now(clock));
+        // Queue the other target locales for translation. Each
+        // enqueue is idempotent (ALREADY_EXISTS is a no-op), so a
+        // second hydration run that doesn't bump rawg.fetchedAt
+        // will not re-enqueue.
+        if (translationService != null && rawgAgg != null && rawgAgg.rawg() != null) {
+            translationService.markStaleAndEnqueue(
+                    slug, rawgAgg.rawg().fetchedAt());
+        }
         log.info("hydrate_doc_ok slug={} status={} missing={} full_refresh={}",
                 slug, composed.status(), composed.missingFields().size(), decision.isFullRefresh());
         return new HydrationOutcome(composed.status(), decision.refreshDeals(), decision.refreshRawg());

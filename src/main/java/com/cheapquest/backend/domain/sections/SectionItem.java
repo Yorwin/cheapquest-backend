@@ -13,9 +13,12 @@ import java.util.Objects;
  * stores carry it).
  *
  * <p>{@code score} is the section-specific ranking signal
- * (0..1, higher is better). The sort and the limit are applied
- * by the builder; consumers should re-sort only if the section
- * contract explicitly allows it.
+ * (higher is better). The range and unit depend on the section
+ * (e.g. the raw savings percentage for "mejores promos", a
+ * normalised composite score for "populares"); the consumer
+ * must not assume a fixed range. The sort and the limit are
+ * applied by the builder; consumers should re-sort only if
+ * the section contract explicitly allows it.
  *
  * <p>{@code extra} is a small per-section bag of human-friendly
  * hints (e.g. {@code savingsPct=66.70} for promos,

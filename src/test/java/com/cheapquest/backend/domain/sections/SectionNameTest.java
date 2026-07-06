@@ -3,6 +3,7 @@ package com.cheapquest.backend.domain.sections;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Arrays;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class SectionNameTest {
@@ -44,5 +45,29 @@ class SectionNameTest {
     @Test
     void has_five_sections() {
         assertThat(SectionName.values()).hasSize(5);
+    }
+
+    @Test
+    void fromSlug_returns_section_for_known_slug() {
+        assertThat(SectionName.fromSlug("populares"))
+                .contains(SectionName.POPULARES);
+        assertThat(SectionName.fromSlug("mejores-promos"))
+                .contains(SectionName.MEJORES_PROMOS);
+        assertThat(SectionName.fromSlug("nuevas-ofertas"))
+                .contains(SectionName.NUEVAS_OFERTAS);
+        assertThat(SectionName.fromSlug("vintage"))
+                .contains(SectionName.VINTAGE);
+        assertThat(SectionName.fromSlug("bajos-historicos"))
+                .contains(SectionName.BAJOS_HISTORICOS);
+    }
+
+    @Test
+    void fromSlug_returns_empty_for_null_blank_or_unknown() {
+        assertThat(SectionName.fromSlug(null)).isEmpty();
+        assertThat(SectionName.fromSlug("")).isEmpty();
+        assertThat(SectionName.fromSlug("   ")).isEmpty();
+        assertThat(SectionName.fromSlug("Populares")).isEmpty();
+        assertThat(SectionName.fromSlug("mejores_promos")).isEmpty();
+        assertThat(SectionName.fromSlug("nope")).isEmpty();
     }
 }

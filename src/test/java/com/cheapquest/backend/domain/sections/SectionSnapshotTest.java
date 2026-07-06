@@ -30,30 +30,30 @@ class SectionSnapshotTest {
     @Test
     void rejects_null_name() {
         assertThatNullPointerException()
-                .isThrownBy(() -> new SectionSnapshot(null, DAY, NOW, 0, 0, List.of()))
+                .isThrownBy(() -> new SectionSnapshot(null, DAY, NOW, 0, List.of()))
                 .withMessageContaining("name");
     }
 
     @Test
     void rejects_null_date() {
         assertThatNullPointerException()
-                .isThrownBy(() -> new SectionSnapshot(SectionName.MEJORES_PROMOS, null, NOW, 0, 0, List.of()))
+                .isThrownBy(() -> new SectionSnapshot(SectionName.MEJORES_PROMOS, null, NOW, 0, List.of()))
                 .withMessageContaining("date");
     }
 
     @Test
     void rejects_null_computedAt() {
         assertThatNullPointerException()
-                .isThrownBy(() -> new SectionSnapshot(SectionName.MEJORES_PROMOS, DAY, null, 0, 0, List.of()))
+                .isThrownBy(() -> new SectionSnapshot(SectionName.MEJORES_PROMOS, DAY, null, 0, List.of()))
                 .withMessageContaining("computedAt");
     }
 
     @Test
     void accepts_null_items_and_returns_emptyList() {
         SectionSnapshot s = new SectionSnapshot(
-                SectionName.MEJORES_PROMOS, DAY, NOW, 0, 0, null);
+                SectionName.MEJORES_PROMOS, DAY, NOW, 0, null);
         assertThat(s.items()).isEmpty();
-        assertThat(s.itemsKept()).isZero();
+        assertThat(s.items()).hasSize(0);
     }
 
     @Test
@@ -61,7 +61,7 @@ class SectionSnapshotTest {
         List<SectionItem> mutable = new ArrayList<>();
         mutable.add(item());
         SectionSnapshot s = new SectionSnapshot(
-                SectionName.MEJORES_PROMOS, DAY, NOW, 1, 1, mutable);
+                SectionName.MEJORES_PROMOS, DAY, NOW, 1, mutable);
         mutable.clear();
         assertThat(s.items()).hasSize(1);
     }
@@ -69,16 +69,16 @@ class SectionSnapshotTest {
     @Test
     void items_is_unmodifiable() {
         SectionSnapshot s = new SectionSnapshot(
-                SectionName.MEJORES_PROMOS, DAY, NOW, 1, 1, List.of(item()));
+                SectionName.MEJORES_PROMOS, DAY, NOW, 1, List.of(item()));
         assertThat(s.items()).isUnmodifiable();
     }
 
     @Test
-    void carries_total_candidates_and_items_kept() {
+    void carries_total_candidates_and_items_size() {
         SectionSnapshot s = new SectionSnapshot(
-                SectionName.MEJORES_PROMOS, DAY, NOW, 42, 1, List.of(item()));
+                SectionName.MEJORES_PROMOS, DAY, NOW, 42, List.of(item()));
         assertThat(s.totalCandidates()).isEqualTo(42);
-        assertThat(s.itemsKept()).isEqualTo(1);
+        assertThat(s.items()).hasSize(1);
         assertThat(s.name()).isEqualTo(SectionName.MEJORES_PROMOS);
         assertThat(s.date()).isEqualTo(DAY);
         assertThat(s.computedAt()).isEqualTo(NOW);

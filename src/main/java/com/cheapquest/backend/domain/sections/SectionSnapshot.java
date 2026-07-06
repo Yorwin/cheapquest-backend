@@ -16,15 +16,15 @@ import java.util.Objects;
  * builder inspected before filtering and limiting, so a
  * consumer can tell "the section is short because the catalog
  * is small" apart from "the section is short because most
- * games were filtered out". {@code itemsKept} is always
- * {@code items().size()}.
+ * games were filtered out". The number of items that survived
+ * is {@code items().size()}; it is not stored as a separate
+ * field on purpose to avoid a double source of truth.
  */
 public record SectionSnapshot(
         SectionName name,
         LocalDate date,
         Instant computedAt,
         int totalCandidates,
-        int itemsKept,
         List<SectionItem> items) {
 
     public SectionSnapshot {

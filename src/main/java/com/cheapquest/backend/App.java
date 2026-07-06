@@ -18,6 +18,7 @@ import com.cheapquest.backend.dto.cheapshark.CheapSharkStoreDto;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
 import com.cheapquest.backend.endpoint.AdminRefreshEndpoint;
 import com.cheapquest.backend.endpoint.AdminIngestGamesEndpoint;
+import com.cheapquest.backend.endpoint.AdminListGamesEndpoint;
 import com.cheapquest.backend.endpoint.AdminTranslateEndpoint;
 import com.cheapquest.backend.endpoint.HealthEndpoint;
 import com.cheapquest.backend.endpoint.HttpServerBootstrap;
@@ -275,6 +276,8 @@ public final class App {
         com.cheapquest.backend.service.GameIngestService ingestService =
                 new com.cheapquest.backend.service.GameIngestService(
                         firebaseClient, new FirebaseMapper(clock), clock);
+        com.cheapquest.backend.service.GameQueueService queueService =
+                new com.cheapquest.backend.service.GameQueueService(firebaseClient);
 
         java.util.Map<String, com.sun.net.httpserver.HttpHandler> routes = new java.util.LinkedHashMap<>();
         routes.put("/health", new HealthEndpoint(clock));
@@ -282,8 +285,14 @@ public final class App {
                 props.adminRefreshToken(), refreshService, gson));
         routes.put("/admin/translate", new AdminTranslateEndpoint(
                 props.adminRefreshToken(), translationService));
-        routes.put("/admin/games", new AdminIngestGamesEndpoint(
-                props.adminRefreshToken(), ingestService, gson));
+        // /admin/games handles two verbs: POST (ingest) and
+        // GET (list). HttpServer dispatches on path, not verb,
+        // so both handlers share the same route via a small
+        // router. Each handler still rejects methods it does
+        // not own with 400, so a PUT here is rejected by both.
+        routes.put("/admin/games", new AdminGamesRouter(
+                new AdminIngestGamesEndpoint(props.adminRefreshToken(), ingestService, gson),
+                new AdminListGamesEndpoint(props.adminRefreshToken(), queueService)));
 
         try {
             com.sun.net.httpserver.HttpServer server = HttpServerBootstrap.start(
@@ -564,6 +573,39 @@ public final class App {
             log.info("smoke_fetched_at source=rawg at={} age={}", rawgAgg.rawg().fetchedAt(), age);
         } else {
             log.info("smoke_fetched_at source=rawg status=not_fetched");
+        }
+    }
+
+    /**
+     * Routes {@code /admin/games} to one of two handlers based
+     * on the HTTP method. {@link com.sun.net.httpserver.HttpServer}
+     * binds one handler per path, so a verb-routing wrapper is
+     * the simplest way to expose both POST (ingest) and GET
+     * (list) on the same path. Methods neither handler owns
+     * (PUT, DELETE, etc.) are rejected with 400 by both
+     * handlers, so a stray verb still gets a clean error.
+     */
+    private static final class AdminGamesRouter implements com.sun.net.httpserver.HttpHandler {
+
+        private final com.sun.net.httpserver.HttpHandler postHandler;
+        private final com.sun.net.httpserver.HttpHandler getHandler;
+
+        AdminGamesRouter(com.sun.net.httpserver.HttpHandler postHandler,
+                com.sun.net.httpserver.HttpHandler getHandler) {
+            this.postHandler = postHandler;
+            this.getHandler = getHandler;
+        }
+
+        @Override
+        public void handle(com.sun.net.httpserver.HttpExchange ex) throws java.io.IOException {
+            if ("POST".equalsIgnoreCase(ex.getRequestMethod())) {
+                postHandler.handle(ex);
+            } else if ("GET".equalsIgnoreCase(ex.getRequestMethod())) {
+                getHandler.handle(ex);
+            } else {
+                // Let the first handler reject it with its usual 400.
+                postHandler.handle(ex);
+            }
         }
     }
 }

@@ -267,6 +267,41 @@ Inserta títulos en el pipeline: por cada nombre crea (idempotente) el documento
 
 > Los títulos **deben** ir en inglés: RAWG y CheapShark se consultan por nombre y la pipeline usa `doc.title()` como clave de búsqueda. Un título en otro idioma acabaría en `/games/failed` en la primera hidratación sin error evidente.
 
+### Inspección de colas
+```
+GET /admin/games?status=pending|failed
+Authorization: Bearer ${ADMIN_REFRESH_TOKEN}
+```
+
+Devuelve el contenido de la cola de hidratación para inspección operativa (alternativa a la consola de Firebase). `status` es obligatorio y case-insensitive; `pending` lee de `pending/`, `failed` lee de `failed/`.
+
+Respuesta `200 OK`:
+```json
+{
+  "status": "pending",
+  "count": 2,
+  "entries": [
+    { "slug": "portal", "attempts": 1,
+      "firstAttemptAt": null,
+      "lastAttemptAt": "2026-07-06T10:00:00Z",
+      "lastError": null },
+    { "slug": "hl2",    "attempts": 2,
+      "firstAttemptAt": null,
+      "lastAttemptAt": "2026-07-06T10:05:00Z",
+      "lastError": "rawg 503" }
+  ]
+}
+```
+
+`firstAttemptAt` solo se rellena en entradas de la cola `failed` (los docs `pending` no lo llevan); en `pending` es `null` explícito. Timestamps en ISO-8601 (convención del resto de DTOs del proyecto).
+
+- `200 OK` con `{ "status": "<echoed>", "count": N, "entries": [...] }` aunque la cola esté vacía.
+- `400 Bad Request` — `status` ausente, vacío, o distinto de `pending`/`failed`; método distinto de `GET`.
+- `401 Unauthorized` — falta/mal token.
+- `500 Internal Server Error` ante cualquier otro fallo.
+
+> El endpoint es de solo lectura: no encola, no reencola, no modifica nada. Para mover una entrada de `failed` de vuelta a `pending` se usa `replacePending` desde una Firebase Function o un script externo (ver §3 y `FirebaseClient`).
+
 ### Endpoint extra
 ```
 GET /health

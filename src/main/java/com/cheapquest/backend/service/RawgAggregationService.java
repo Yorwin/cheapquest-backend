@@ -63,14 +63,23 @@ public final class RawgAggregationService {
                 .orElseThrow(() -> new GameNotFoundException(
                         "no RAWG detail for slug=" + picked.slug()));
 
+        Optional<RawgGameDto> detailsByIdOpt = safeGetDetailsById(picked.id());
+
+        RawgGameDto merged = detailsByIdOpt
+                .map(byId -> mapper.mergeSearchAndDetails(picked, detail, byId))
+                .orElse(detail);
+
+        log.debug("rawg_merge_done slug={} id={} idCallSucceeded={}",
+                merged.slug(), merged.id(), detailsByIdOpt.isPresent());
+
         List<RawgGameDto> additions = safeFetch(
-                detail.additionsCount() > 0,
-                () -> client.getAdditions(detail.slug()),
+                merged.additionsCount() > 0,
+                () -> client.getAdditions(merged.slug()),
                 "additions");
 
         List<RawgCreatorDto> creators = safeFetch(
-                detail.creatorsCount() > 0,
-                () -> client.getDevelopmentTeam(detail.slug()),
+                merged.creatorsCount() > 0,
+                () -> client.getDevelopmentTeam(merged.slug()),
                 "development-team");
 
         // The detail response's moviesCount is sometimes stale
@@ -82,12 +91,12 @@ public final class RawgAggregationService {
         // counter is wrong.
         List<RawgMovieDto> movies = safeFetch(
                 true,
-                () -> client.getMovies(detail.slug()),
+                () -> client.getMovies(merged.slug()),
                 "movies");
 
-        List<RawgScreenshotDto> screenshots = resolveScreenshots(detail);
+        List<RawgScreenshotDto> screenshots = resolveScreenshots(merged);
 
-        RawgDetails rawg = mapper.toDetails(detail, movies, screenshots, additions, creators,
+        RawgDetails rawg = mapper.toDetails(merged, movies, screenshots, additions, creators,
                 Instant.now(clock));
 
         log.debug("rawg_aggregate_done name=\"{}\" durationMs={} additions={} creators={} movies={} screenshots={}",
@@ -101,6 +110,19 @@ public final class RawgAggregationService {
                 null,
                 rawg,
                 Instant.now(clock));
+    }
+
+    private Optional<RawgGameDto> safeGetDetailsById(int id) {
+        try {
+            return client.getDetails(String.valueOf(id));
+        } catch (ApiUnavailableException e) {
+            log.warn("rawg_details_by_id_failed id={} status={}", id, e.status());
+            return Optional.empty();
+        } catch (RuntimeException e) {
+            log.warn("rawg_details_by_id_failed id={} error={}: {}",
+                    id, e.getClass().getSimpleName(), e.getMessage(), e);
+            return Optional.empty();
+        }
     }
 
     private List<RawgScreenshotDto> resolveScreenshots(RawgGameDto detail) {

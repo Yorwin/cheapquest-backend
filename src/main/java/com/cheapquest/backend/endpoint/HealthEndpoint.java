@@ -43,7 +43,7 @@ public final class HealthEndpoint implements HttpHandler {
         }
     }
 
-    static void writeError(HttpExchange ex, Throwable t) throws IOException {
+    public static void writeError(HttpExchange ex, Throwable t) throws IOException {
         GlobalExceptionHandler.Mapped mapped = GlobalExceptionHandler.handle(t);
         String body = "{\"code\":\"" + mapped.body().code()
                 + "\",\"message\":\"" + escape(mapped.body().message())

@@ -477,5 +477,124 @@ class RawgAggregationServiceTest {
                 java.util.Map.of(), java.util.Map.of(), 0,
                 Instant.parse("2026-01-01T00:00:00Z"));
     }
+
+    @Test
+    void aggregate_alwaysCallsGetDetailsByIdAfterSlug() {
+        var portal = RawgDtoFixtures.minimalGame("portal", "Portal");
+        var detail = RawgDtoFixtures.detailWithCounts("portal", "Portal", 0, 0, 0, 0);
+        var idDetails = RawgDtoFixtures.detailWithCounts("portal", "Portal", 0, 0, 0, 0);
+        var rawg = stubDetails("portal", "Portal");
+
+        when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
+        when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
+        lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
+        when(client.getDetails("portal")).thenReturn(Optional.of(detail));
+        when(client.getDetails("1")).thenReturn(Optional.of(idDetails));
+        when(mapper.mergeSearchAndDetails(portal, detail, idDetails)).thenReturn(idDetails);
+        lenient().when(mapper.toDetails(any(), anyList(), anyList(), anyList(), anyList(), any())).thenReturn(rawg);
+
+        service.aggregate("Portal");
+
+        verify(client).getDetails("portal");
+        verify(client).getDetails("1");
+        verify(mapper).mergeSearchAndDetails(portal, detail, idDetails);
+    }
+
+    @Test
+    void aggregate_passesMergedDtoToMapperToDetails() {
+        var portal = RawgDtoFixtures.minimalGame("portal", "Portal");
+        var detail = RawgDtoFixtures.detailWithCounts("portal", "Portal", 0, 0, 0, 0);
+        var idDetails = RawgDtoFixtures.detailWithCounts("portal", "Portal", 0, 0, 0, 0);
+        var rawg = stubDetails("portal", "Portal");
+
+        when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
+        when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
+        lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
+        when(client.getDetails("portal")).thenReturn(Optional.of(detail));
+        when(client.getDetails("1")).thenReturn(Optional.of(idDetails));
+        when(mapper.mergeSearchAndDetails(portal, detail, idDetails)).thenReturn(idDetails);
+        lenient().when(mapper.toDetails(eq(idDetails), anyList(), anyList(), anyList(), anyList(), any()))
+                .thenReturn(rawg);
+
+        service.aggregate("Portal");
+
+        verify(mapper).toDetails(eq(idDetails), anyList(), anyList(), anyList(), anyList(), any());
+    }
+
+    @Test
+    void aggregate_continuesWithSearchAndSlugWhenIdCallReturns404() {
+        var portal = RawgDtoFixtures.minimalGame("portal", "Portal");
+        var detail = RawgDtoFixtures.detailWithCounts("portal", "Portal", 0, 0, 0, 0);
+        var rawg = stubDetails("portal", "Portal");
+
+        when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
+        when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
+        lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
+        when(client.getDetails("portal")).thenReturn(Optional.of(detail));
+        when(client.getDetails("1"))
+                .thenThrow(new ApiUnavailableException("HTTP 404 on /games/1", 404, "none"));
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList(), any())).thenReturn(rawg);
+
+        AggregatedGame result = service.aggregate("Portal");
+
+        assertThat(result.rawg()).isSameAs(rawg);
+        verify(mapper, never()).mergeSearchAndDetails(any(), any(), any());
+    }
+
+    @Test
+    void aggregate_continuesWithSearchAndSlugWhenIdCallThrows5xx() {
+        var portal = RawgDtoFixtures.minimalGame("portal", "Portal");
+        var detail = RawgDtoFixtures.detailWithCounts("portal", "Portal", 0, 0, 0, 0);
+        var rawg = stubDetails("portal", "Portal");
+
+        when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
+        when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
+        lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
+        when(client.getDetails("portal")).thenReturn(Optional.of(detail));
+        when(client.getDetails("1"))
+                .thenThrow(new ApiUnavailableException("HTTP 503 on /games/1", 503, "down"));
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList(), any())).thenReturn(rawg);
+
+        AggregatedGame result = service.aggregate("Portal");
+
+        assertThat(result.rawg()).isSameAs(rawg);
+    }
+
+    @Test
+    void aggregate_continuesWithSearchAndSlugWhenIdCallThrowsRateLimit() {
+        var portal = RawgDtoFixtures.minimalGame("portal", "Portal");
+        var detail = RawgDtoFixtures.detailWithCounts("portal", "Portal", 0, 0, 0, 0);
+        var rawg = stubDetails("portal", "Portal");
+
+        when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
+        when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
+        lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
+        when(client.getDetails("portal")).thenReturn(Optional.of(detail));
+        when(client.getDetails("1"))
+                .thenThrow(new ApiUnavailableException("HTTP 429 on /games/1", 429, "rate"));
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList(), any())).thenReturn(rawg);
+
+        AggregatedGame result = service.aggregate("Portal");
+
+        assertThat(result.rawg()).isSameAs(rawg);
+    }
+
+    @Test
+    void aggregate_continuesWhenIdCallThrowsNonApiRuntimeException() {
+        var portal = RawgDtoFixtures.minimalGame("portal", "Portal");
+        var detail = RawgDtoFixtures.detailWithCounts("portal", "Portal", 0, 0, 0, 0);
+        var rawg = stubDetails("portal", "Portal");
+
+        when(client.searchByName("Portal", 10)).thenReturn(List.of(portal));
+        when(mapper.pickExactMatch(List.of(portal), "Portal")).thenReturn(Optional.of(portal));
+        lenient().when(mapper.pickClosestByLevenshtein(any(), anyString())).thenReturn(Optional.empty());
+        when(client.getDetails("portal")).thenReturn(Optional.of(detail));
+        when(client.getDetails("1")).thenThrow(new IllegalStateException("network blip"));
+        when(mapper.toDetails(eq(detail), anyList(), anyList(), anyList(), anyList(), any())).thenReturn(rawg);
+
+        AggregatedGame result = service.aggregate("Portal");
+
+        assertThat(result.rawg()).isSameAs(rawg);
+    }
 }
 

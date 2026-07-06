@@ -6,8 +6,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.cheapquest.backend.domain.sections.GameView;
 import com.cheapquest.backend.domain.sections.RawgView;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
+import com.cheapquest.backend.dto.firebase.RawgBlock;
+import com.cheapquest.backend.dto.firebase.RawgDocumentDto;
 import com.cheapquest.backend.fixtures.GameDocumentDtoFixtures;
+import com.cheapquest.backend.fixtures.RawgDocumentDtoFixtures;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class GameViewMapperTest {
@@ -53,8 +57,7 @@ class GameViewMapperTest {
 
     @Test
     void toGameView_with_rawg_block_but_null_data_returns_null_rawg() {
-        com.cheapquest.backend.dto.firebase.RawgBlock rawgBlock =
-                new com.cheapquest.backend.dto.firebase.RawgBlock(true, "2026-01-01T00:00:00Z", null);
+        RawgBlock rawgBlock = new RawgBlock(true, "2026-01-01T00:00:00Z", null);
         GameDocumentDto doc = new GameDocumentDto(
                 "title", "slug", "en", true, "2026-01-01T00:00:00Z",
                 null, rawgBlock, java.util.Map.of(), null);
@@ -81,5 +84,53 @@ class GameViewMapperTest {
     void toGameViews_with_empty_iterable_returns_empty_list() {
         List<GameView> vs = mapper.toGameViews(List.of());
         assertThat(vs).isEmpty();
+    }
+
+    @Test
+    void toGameView_propagates_popularity_signals_into_RawgView() {
+        RawgDocumentDto rawgData = RawgDocumentDtoFixtures.full("portal", "Portal")
+                .build();
+        RawgBlock rawgBlock = new RawgBlock(true, "2026-06-30T10:05:00Z", rawgData);
+        GameDocumentDto doc = new GameDocumentDto(
+                "Portal", "portal", "en", true, "2026-06-30T10:00:00Z",
+                null, rawgBlock, java.util.Map.of(), null);
+        GameView v = mapper.toGameView(doc);
+        assertThat(v.rawg()).isNotNull();
+        assertThat(v.rawg().ratingsCount()).isZero();
+        assertThat(v.rawg().additionsCount()).isZero();
+        assertThat(v.rawg().addedByStatus()).isEmpty();
+        assertThat(v.rawg().reactions()).isEmpty();
+        assertThat(v.rawg().suggestionsCount()).isZero();
+    }
+
+    @Test
+    void toGameView_defensive_copies_popularity_maps() {
+        java.util.HashMap<String, Integer> mutable = new java.util.HashMap<>();
+        mutable.put("owned", 10);
+        RawgDocumentDto rawgData = new RawgDocumentDto(
+                "portal", "Portal", "Portal", "2007-10-10",
+                null, null, null, null, null, null, null, null,
+                0, 0, 0, 0,
+                List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(),
+                List.of(),
+                false, null, null, List.of(), 0, 0, 0, null, 0, 0, 0, 0, 0,
+                null, List.of(), null, List.of(), List.of(),
+                mutable, Map.of(), 0,
+                "2026-06-30T10:05:00Z");
+        RawgBlock rawgBlock = new RawgBlock(true, "2026-06-30T10:05:00Z", rawgData);
+        GameDocumentDto doc = new GameDocumentDto(
+                "Portal", "portal", "en", true, "2026-06-30T10:00:00Z",
+                null, rawgBlock, java.util.Map.of(), null);
+        GameView v = mapper.toGameView(doc);
+        mutable.clear();
+        assertThat(v.rawg().addedByStatus()).containsEntry("owned", 10);
+    }
+
+    @Test
+    void toGameView_propagates_offerCount_to_CheapsharkView() {
+        GameDocumentDto doc = GameDocumentDtoFixtures.syncedDoc("far-cry-6", "Far Cry 6");
+        GameView v = mapper.toGameView(doc);
+        assertThat(v.cheapshark().offerCount()).isEqualTo(2);
     }
 }

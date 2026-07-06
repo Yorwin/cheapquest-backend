@@ -17,6 +17,7 @@ import com.cheapquest.backend.domain.validation.ValidationReport;
 import com.cheapquest.backend.dto.cheapshark.CheapSharkStoreDto;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
 import com.cheapquest.backend.endpoint.AdminRefreshEndpoint;
+import com.cheapquest.backend.endpoint.AdminIngestGamesEndpoint;
 import com.cheapquest.backend.endpoint.AdminTranslateEndpoint;
 import com.cheapquest.backend.endpoint.HealthEndpoint;
 import com.cheapquest.backend.endpoint.HttpServerBootstrap;
@@ -271,6 +272,9 @@ public final class App {
         RefreshService refreshService = new RefreshService(lock, hydration, clock);
         TranslationService translationService = buildTranslationService(
                 firebaseClient, new FirebaseMapper(clock), clock, props);
+        com.cheapquest.backend.service.GameIngestService ingestService =
+                new com.cheapquest.backend.service.GameIngestService(
+                        firebaseClient, new FirebaseMapper(clock), clock);
 
         java.util.Map<String, com.sun.net.httpserver.HttpHandler> routes = new java.util.LinkedHashMap<>();
         routes.put("/health", new HealthEndpoint(clock));
@@ -278,6 +282,8 @@ public final class App {
                 props.adminRefreshToken(), refreshService, gson));
         routes.put("/admin/translate", new AdminTranslateEndpoint(
                 props.adminRefreshToken(), translationService));
+        routes.put("/admin/games", new AdminIngestGamesEndpoint(
+                props.adminRefreshToken(), ingestService, gson));
 
         try {
             com.sun.net.httpserver.HttpServer server = HttpServerBootstrap.start(

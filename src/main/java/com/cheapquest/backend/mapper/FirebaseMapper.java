@@ -98,10 +98,10 @@ public final class FirebaseMapper {
         if (deals == null) {
             return CheapsharkBlock.empty();
         }
-        OfferDto bestDto = deals.bestDeal() == null ? null : toOfferDto(deals.bestDeal());
+        OfferDto bestDto = deals.bestDeal() == null ? null : OfferConverter.toDto(deals.bestDeal());
         List<OfferDto> restDtos = new ArrayList<>(deals.offers().size());
         for (Offer o : deals.offers()) {
-            restDtos.add(toOfferDto(o));
+            restDtos.add(OfferConverter.toDto(o));
         }
         return new CheapsharkBlock(
                 true,
@@ -181,16 +181,5 @@ public final class FirebaseMapper {
             throw new IllegalArgumentException("title produces empty slug: " + title);
         }
         return slug;
-    }
-
-    private OfferDto toOfferDto(Offer o) {
-        return new OfferDto(
-                o.storeId(),
-                o.storeName(),
-                o.storeIconUrl(),
-                o.price(),
-                o.retailPrice(),
-                o.savings(),
-                o.dealUrl());
     }
 }

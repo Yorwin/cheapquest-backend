@@ -63,10 +63,11 @@ class FirestoreSectionStoreTest {
                     new BigDecimal("66.70"),
                     Map.of("savingsPct", "66.70"))));
 
+    private static final SectionSnapshotMapper MAPPER = new SectionSnapshotMapper();
+
     private Firestore firestore;
     private WriteBatch batch;
     private FirestoreSectionStore store;
-    private final SectionSnapshotMapper mapper = new SectionSnapshotMapper();
 
     @BeforeEach
     void setUp() {
@@ -74,7 +75,7 @@ class FirestoreSectionStoreTest {
         batch = mock(WriteBatch.class);
         when(firestore.batch()).thenReturn(batch);
         // Tight retry budget keeps the transient-retry test fast.
-        store = new FirestoreSectionStore(firestore, SECTIONS_PATH, mapper, 2, 1L);
+        store = new FirestoreSectionStore(firestore, SECTIONS_PATH, MAPPER, 2, 1L);
     }
 
     // -------- write ----------------------------------------------------------
@@ -85,21 +86,19 @@ class FirestoreSectionStoreTest {
         // pair is covered by the read tests. Here we just want
         // to assert that the write is a single batched commit
         // carrying the same payload twice (once to the history
-        // doc, once to the latest mirror). We use a deep-stub
-        // Firestore so the chain
-        // (collection -> document -> collection -> document)
-        // works for both date keys without manual step-by-step
-        // wiring.
-        org.mockito.Mockito.reset(firestore);
-        firestore = mock(Firestore.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-        store = new FirestoreSectionStore(firestore, SECTIONS_PATH, mapper, 2, 1L);
-        when(firestore.batch()).thenReturn(batch);
+        // doc, once to the latest mirror). Use a deep-stub
+        // firestore on this test only so the path-traversal
+        // works without manual step-by-step wiring.
+        Firestore deepFirestore = mock(Firestore.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+        when(deepFirestore.batch()).thenReturn(batch);
+        FirestoreSectionStore writeStore = new FirestoreSectionStore(
+                deepFirestore, SECTIONS_PATH, MAPPER, 2, 1L);
 
         SettableApiFuture<List<WriteResult>> future = SettableApiFuture.create();
         future.set(List.of());
         when(batch.commit()).thenReturn(future);
 
-        store.write(SNAPSHOT);
+        writeStore.write(SNAPSHOT);
 
         ArgumentCaptor<Object> dataCaptor = ArgumentCaptor.forClass(Object.class);
         verify(batch, times(2)).set(any(DocumentReference.class), dataCaptor.capture());
@@ -174,6 +173,7 @@ class FirestoreSectionStoreTest {
     void readAllLatest_returns_map_of_parsed_snapshots() {
         CollectionReference items = mock(CollectionReference.class);
         CollectionReference latestDoc = mock(CollectionReference.class);
+        DocumentReference latestDocRef = mock(DocumentReference.class);
         Query ordered = mock(Query.class);
         QueryDocumentSnapshot doc1 = mockQueryDoc("mejores-promos", DTO);
         QueryDocumentSnapshot doc2 = mockQueryDoc("populares",
@@ -182,9 +182,8 @@ class FirestoreSectionStoreTest {
         QuerySnapshot qs = mock(QuerySnapshot.class);
 
         when(firestore.collection(SECTIONS_PATH)).thenReturn(latestDoc);
-        when(latestDoc.document(FirestoreSectionStore.LATEST_SENTINEL)).thenReturn(mock(DocumentReference.class));
-        when(latestDoc.document(FirestoreSectionStore.LATEST_SENTINEL)
-                .collection(FirestoreSectionStore.ITEMS_SUBCOLLECTION)).thenReturn(items);
+        when(latestDoc.document(FirestoreSectionStore.LATEST_SENTINEL)).thenReturn(latestDocRef);
+        when(latestDocRef.collection(FirestoreSectionStore.ITEMS_SUBCOLLECTION)).thenReturn(items);
         when(items.orderBy(FieldPath.documentId())).thenReturn(ordered);
 
         SettableApiFuture<QuerySnapshot> future = SettableApiFuture.create();
@@ -203,15 +202,15 @@ class FirestoreSectionStoreTest {
     void readAllLatest_skips_documents_that_fail_to_deserialise() {
         CollectionReference items = mock(CollectionReference.class);
         CollectionReference latestDoc = mock(CollectionReference.class);
+        DocumentReference latestDocRef = mock(DocumentReference.class);
         Query ordered = mock(Query.class);
         QueryDocumentSnapshot ok = mockQueryDoc("mejores-promos", DTO);
         QueryDocumentSnapshot bad = mockQueryDoc("populares", null);
         QuerySnapshot qs = mock(QuerySnapshot.class);
 
         when(firestore.collection(SECTIONS_PATH)).thenReturn(latestDoc);
-        when(latestDoc.document(FirestoreSectionStore.LATEST_SENTINEL)).thenReturn(mock(DocumentReference.class));
-        when(latestDoc.document(FirestoreSectionStore.LATEST_SENTINEL)
-                .collection(FirestoreSectionStore.ITEMS_SUBCOLLECTION)).thenReturn(items);
+        when(latestDoc.document(FirestoreSectionStore.LATEST_SENTINEL)).thenReturn(latestDocRef);
+        when(latestDocRef.collection(FirestoreSectionStore.ITEMS_SUBCOLLECTION)).thenReturn(items);
         when(items.orderBy(FieldPath.documentId())).thenReturn(ordered);
 
         SettableApiFuture<QuerySnapshot> future = SettableApiFuture.create();

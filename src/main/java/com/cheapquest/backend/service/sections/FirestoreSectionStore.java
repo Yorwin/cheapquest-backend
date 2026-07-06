@@ -181,6 +181,13 @@ public final class FirestoreSectionStore implements SectionStore {
      *
      * <p>This is the same shape as {@code FirebaseClient.await};
      * see that method for the full rationale.
+     *
+     * <p>TODO: extract into a shared {@code FirestoreRetrier}
+     * utility that both this and {@code FirebaseClient} use. The
+     * third user (the future {@code FirestoreDealsSeenStore}
+     * needed by the "nuevas ofertas" section) is the natural
+     * trigger for that refactor; until then, the duplication is
+     * small and self-contained.
      */
     private <T> T await(String op, String subject, Supplier<ApiFuture<T>> futureSupplier) {
         for (int attempt = 0; attempt <= maxRetries; attempt++) {

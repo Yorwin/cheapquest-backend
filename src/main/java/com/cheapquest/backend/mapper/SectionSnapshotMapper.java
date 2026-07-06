@@ -1,10 +1,8 @@
 package com.cheapquest.backend.mapper;
 
-import com.cheapquest.backend.domain.Offer;
 import com.cheapquest.backend.domain.sections.SectionItem;
 import com.cheapquest.backend.domain.sections.SectionName;
 import com.cheapquest.backend.domain.sections.SectionSnapshot;
-import com.cheapquest.backend.dto.firebase.OfferDto;
 import com.cheapquest.backend.dto.firebase.sections.SectionItemDto;
 import com.cheapquest.backend.dto.firebase.sections.SectionSnapshotDto;
 import java.time.Instant;
@@ -57,7 +55,7 @@ public final class SectionSnapshotMapper {
         return new SectionItemDto(
                 item.slug(),
                 item.title(),
-                toOfferDto(item.bestDeal()),
+                OfferConverter.toDto(item.bestDeal()),
                 item.score(),
                 item.extra());
     }
@@ -66,20 +64,8 @@ public final class SectionSnapshotMapper {
         return new SectionItem(
                 dto.slug(),
                 dto.title(),
-                toOffer(dto.bestDeal()),
+                OfferConverter.toDomain(dto.bestDeal()),
                 dto.score(),
                 dto.extra());
-    }
-
-    private static OfferDto toOfferDto(Offer o) {
-        return new OfferDto(
-                o.storeId(), o.storeName(), o.storeIconUrl(),
-                o.price(), o.retailPrice(), o.savings(), o.dealUrl());
-    }
-
-    private static Offer toOffer(OfferDto d) {
-        return new Offer(
-                d.storeId(), d.storeName(), d.storeIconUrl(),
-                d.price(), d.retailPrice(), d.savings(), d.dealUrl());
     }
 }

@@ -52,11 +52,11 @@ public final class GameViewMapper {
             return null;
         }
         boolean synced = Boolean.TRUE.equals(block.synced());
-        Offer best = block.bestDeal() == null ? null : toOffer(block.bestDeal());
+        Offer best = block.bestDeal() == null ? null : OfferConverter.toDomain(block.bestDeal());
         List<Offer> offers = new ArrayList<>();
         if (block.deals() != null) {
             for (OfferDto d : block.deals()) {
-                offers.add(toOffer(d));
+                offers.add(OfferConverter.toDomain(d));
             }
         }
         return new CheapsharkView(synced, best, block.cheapestEver(), offers);
@@ -71,11 +71,5 @@ public final class GameViewMapper {
             return null;
         }
         return new RawgView(data.released(), data.metacritic(), data.rating());
-    }
-
-    private static Offer toOffer(OfferDto d) {
-        return new Offer(
-                d.storeId(), d.storeName(), d.storeIconUrl(),
-                d.price(), d.retailPrice(), d.savings(), d.dealUrl());
     }
 }

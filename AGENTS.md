@@ -245,6 +245,28 @@ Configurado para correr cada 6h (configurable en `application.properties` con `a
 0 */6 * * * curl -X POST -H "Authorization: Bearer TU_TOKEN" http://localhost:8080/admin/refresh
 ```
 
+### Ingesta de juegos
+```
+POST /admin/games
+Authorization: Bearer ${ADMIN_REFRESH_TOKEN}
+Content-Type: application/json
+
+Body:
+{
+  "names": ["Stardew Valley", "Hades"],
+  "language": "en"   // opcional, default "en", único valor aceptado
+}
+```
+
+Inserta títulos en el pipeline: por cada nombre crea (idempotente) el documento en `games/{slug}` y lo encola en `pending/{slug}`. La hidratación posterior se dispara con `POST /admin/refresh` o con el cron. Tamaño máximo del batch: 100 (ver `GameIngestService.MAX_BATCH_SIZE`). La lista se deduplica preservando orden antes de procesar, así que reenviar el mismo batch es seguro y barato.
+
+- `200 OK` con `{ "status": "completed", "accepted": [...], "failed": [...] }` — cada item de `accepted` lleva `{name, slug, action: "CREATED" | "ALREADY_EXISTED"}`, cada item de `failed` lleva `{name, error}`. **200 incluso si todos los nombres fallan**: un batch bien formado siempre devuelve 200; el caller inspecciona `failed`.
+- `400 Bad Request` — body vacío, JSON malformado, `Content-Type` no JSON, `names` ausente/vacía, `language != "en"`, o tamaño del batch > `MAX_BATCH_SIZE`.
+- `401 Unauthorized` — falta/mal token.
+- `500 Internal Server Error` con `ErrorResponse` ante cualquier otro fallo (Firestore caído, etc.).
+
+> Los títulos **deben** ir en inglés: RAWG y CheapShark se consultan por nombre y la pipeline usa `doc.title()` como clave de búsqueda. Un título en otro idioma acabaría en `/games/failed` en la primera hidratación sin error evidente.
+
 ### Endpoint extra
 ```
 GET /health

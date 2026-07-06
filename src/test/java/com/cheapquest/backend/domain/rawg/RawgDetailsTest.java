@@ -20,6 +20,9 @@ class RawgDetailsTest {
                         null, null, null, 0, 0, 0, 0,
                         List.of(), List.of(), List.of(), List.of(),
                         null, null, null, null, List.of(),
+                        false, null, null, List.of(), 0, 0, 0, null, 0, 0, 0, 0, 0,
+                        null, List.of(), null, List.of(), List.of(),
+                        java.util.Map.of(), java.util.Map.of(), 0,
                         null))
                 .withMessageContaining("fetchedAt");
     }
@@ -32,6 +35,9 @@ class RawgDetailsTest {
                 null, null, null, 0, 0, 0, 0,
                 List.of(), List.of(), List.of(), List.of(),
                 null, null, null, null, List.of(),
+                false, null, null, List.of(), 0, 0, 0, null, 0, 0, 0, 0, 0,
+                null, List.of(), null, List.of(), List.of(),
+                java.util.Map.of(), java.util.Map.of(), 0,
                 T);
         assertThat(d.fetchedAt()).isEqualTo(T);
     }

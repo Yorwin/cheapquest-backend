@@ -2,6 +2,7 @@ package com.cheapquest.backend.dto.rawg;
 
 import com.google.gson.annotations.SerializedName;
 import java.util.List;
+import java.util.Map;
 
 public record RawgGameDto(
         int id,
@@ -43,5 +44,8 @@ public record RawgGameDto(
         List<RawgPlatformEntryDto> parentPlatforms,
         RawgEsrbRatingDto esrbRating,
         List<RawgStoreEntryDto> stores,
-        @SerializedName("short_screenshots") List<RawgScreenshotDto> shortScreenshots) {
+        @SerializedName("short_screenshots") List<RawgScreenshotDto> shortScreenshots,
+        @SerializedName("added_by_status") Map<String, Integer> addedByStatus,
+        Map<String, Integer> reactions,
+        @SerializedName("suggestions_count") int suggestionsCount) {
 }

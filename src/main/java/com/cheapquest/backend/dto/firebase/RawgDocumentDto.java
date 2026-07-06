@@ -2,12 +2,18 @@ package com.cheapquest.backend.dto.firebase;
 
 import com.cheapquest.backend.domain.rawg.DeveloperSummary;
 import com.cheapquest.backend.domain.rawg.PublisherSummary;
+import com.cheapquest.backend.domain.rawg.RawgClip;
 import com.cheapquest.backend.domain.rawg.RawgCreator;
 import com.cheapquest.backend.domain.rawg.RawgDlc;
+import com.cheapquest.backend.domain.rawg.RawgEsrbRating;
 import com.cheapquest.backend.domain.rawg.RawgGenre;
 import com.cheapquest.backend.domain.rawg.RawgPlatform;
+import com.cheapquest.backend.domain.rawg.RawgRating;
+import com.cheapquest.backend.domain.rawg.RawgScreenshot;
+import com.cheapquest.backend.domain.rawg.RawgStoreEntry;
 import com.cheapquest.backend.domain.rawg.RawgTag;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Typed Firestore representation of the RAWG payload. Mirrors
@@ -60,5 +66,26 @@ public record RawgDocumentDto(
         List<RawgDlc> dlcs,
         List<RawgCreator> creators,
         List<String> screenshots,
+        Boolean tba,
+        String updated,
+        String backgroundImageAdditional,
+        List<RawgRating> ratings,
+        Integer ratingsCount,
+        Integer reviewsCount,
+        Integer reviewsTextCount,
+        String metacriticUrl,
+        Integer playtime,
+        Integer parentsCount,
+        Integer gameSeriesCount,
+        Integer achievementsCount,
+        Integer parentAchievementsCount,
+        RawgClip clip,
+        List<String> alternativeNames,
+        RawgEsrbRating esrbRating,
+        List<RawgStoreEntry> stores,
+        List<RawgScreenshot> shortScreenshots,
+        Map<String, Integer> addedByStatus,
+        Map<String, Integer> reactions,
+        Integer suggestionsCount,
         String fetchedAt) {
 }

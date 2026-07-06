@@ -264,7 +264,11 @@ class TranslationServiceTest {
                 List.of(new RawgGenre(1, "Action", "action")),
                 List.of(new RawgTag(1, "FPS", "fps", "eng")),
                 List.of(), List.of(), List.of(), List.of(),
-                List.of(), T.toString());
+                List.of(),
+                false, null, null, List.of(), 0, 0, 0, null, 0, 0, 0, 0, 0,
+                null, List.of(), null, List.of(), List.of(),
+                Map.of(), Map.of(), 0,
+                T.toString());
         return new GameDocumentDto(
                 slug, slug, "en", true, T.toString(),
                 com.cheapquest.backend.dto.firebase.CheapsharkBlock.empty(),

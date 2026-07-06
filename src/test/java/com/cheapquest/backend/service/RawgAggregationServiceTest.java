@@ -57,6 +57,9 @@ class RawgAggregationServiceTest {
                 3.9, 4, 89, 0, 0, 0, 0,
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 List.of(), List.of(), List.of(),
+                false, null, null, List.of(), 0, 0, 0, null, 0, 0, 0, 0, 0,
+                null, List.of(), null, List.of(), List.of(),
+                java.util.Map.of(), java.util.Map.of(), 0,
                 Instant.parse("2026-01-01T00:00:00Z"));
 
         when(client.searchByName("Far Cry", 10)).thenReturn(List.of(farCry));
@@ -469,6 +472,9 @@ class RawgAggregationServiceTest {
                 null, null, null, 0, 0, 0, 0,
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 List.of(), List.of(), List.of(),
+                false, null, null, List.of(), 0, 0, 0, null, 0, 0, 0, 0, 0,
+                null, List.of(), null, List.of(), List.of(),
+                java.util.Map.of(), java.util.Map.of(), 0,
                 Instant.parse("2026-01-01T00:00:00Z"));
     }
 }

@@ -65,6 +65,9 @@ public final class RawgDetailsFixtures {
                     slug, name, nameOriginal, released, description, descriptionRaw,
                     headerImage, trailerUrl, null, null, null, null, 0, 0, 0, 0,
                     developers, publishers, genres, tags, null, null, null, null, screenshots,
+                    false, null, null, List.of(), 0, 0, 0, null, 0, 0, 0, 0, 0,
+                    null, List.of(), null, List.of(), List.of(),
+                    java.util.Map.of(), java.util.Map.of(), 0,
                     fetchedAt);
         }
     }

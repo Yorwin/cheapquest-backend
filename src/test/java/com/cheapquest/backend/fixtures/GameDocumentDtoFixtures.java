@@ -53,7 +53,11 @@ public final class GameDocumentDtoFixtures {
                                 0, 0, 0, 0,
                                 List.of(), List.of(), List.of(), List.of(),
                                 List.of(), List.of(), List.of(), List.of(),
-                                List.of(), FETCHED_AT)),
+                                List.of(),
+                                false, null, null, List.of(), 0, 0, 0, null, 0, 0, 0, 0, 0,
+                                null, List.of(), null, List.of(), List.of(),
+                                Map.of(), Map.of(), 0,
+                                FETCHED_AT)),
                 Map.of(
                         "es", LocaleBlock.unsynced(),
                         "en", new LocaleBlock(true, FETCHED_AT, FETCHED_AT),

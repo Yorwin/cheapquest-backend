@@ -2,11 +2,17 @@ package com.cheapquest.backend.mapper;
 
 import com.cheapquest.backend.domain.rawg.DeveloperSummary;
 import com.cheapquest.backend.domain.rawg.PublisherSummary;
+import com.cheapquest.backend.domain.rawg.RawgClip;
 import com.cheapquest.backend.domain.rawg.RawgCreator;
 import com.cheapquest.backend.domain.rawg.RawgDetails;
 import com.cheapquest.backend.domain.rawg.RawgDlc;
+import com.cheapquest.backend.domain.rawg.RawgEsrbRating;
 import com.cheapquest.backend.domain.rawg.RawgGenre;
 import com.cheapquest.backend.domain.rawg.RawgPlatform;
+import com.cheapquest.backend.domain.rawg.RawgRating;
+import com.cheapquest.backend.domain.rawg.RawgScreenshot;
+import com.cheapquest.backend.domain.rawg.RawgStoreEntry;
+import com.cheapquest.backend.domain.rawg.RawgStoreRef;
 import com.cheapquest.backend.domain.rawg.RawgTag;
 import com.cheapquest.backend.dto.rawg.RawgClipDto;
 import com.cheapquest.backend.dto.rawg.RawgCreatorDto;
@@ -20,9 +26,11 @@ import com.cheapquest.backend.dto.rawg.RawgPublisherDto;
 import com.cheapquest.backend.dto.rawg.RawgRatingDto;
 import com.cheapquest.backend.dto.rawg.RawgScreenshotDto;
 import com.cheapquest.backend.dto.rawg.RawgStoreEntryDto;
+import com.cheapquest.backend.dto.rawg.RawgStoreRefDto;
 import com.cheapquest.backend.dto.rawg.RawgTagDto;
 import com.cheapquest.backend.util.StringNormalize;
 import com.cheapquest.backend.util.StringUtils;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -181,6 +189,55 @@ public final class RawgMapper {
                 .toList();
     }
 
+    public List<RawgRating> toRatings(List<RawgRatingDto> ratings) {
+        if (ratings == null) {
+            return List.of();
+        }
+        return ratings.stream()
+                .map(r -> new RawgRating(r.id(), r.title(), r.count(), r.percent()))
+                .toList();
+    }
+
+    public RawgClip toClip(RawgClipDto clip) {
+        if (clip == null) {
+            return null;
+        }
+        return new RawgClip(clip.clip(), clip.video(), clip.videoId(), clip.embedId());
+    }
+
+    public RawgEsrbRating toEsrbRating(RawgEsrbRatingDto esrb) {
+        if (esrb == null) {
+            return null;
+        }
+        return new RawgEsrbRating(esrb.id(), esrb.name(), esrb.slug(), esrb.nameEn());
+    }
+
+    public RawgStoreRef toStoreRef(RawgStoreRefDto ref) {
+        if (ref == null) {
+            return null;
+        }
+        return new RawgStoreRef(ref.id(), ref.name(), ref.slug(), ref.domain(),
+                ref.gamesCount(), ref.imageBackground());
+    }
+
+    public List<RawgStoreEntry> toStoreEntries(List<RawgStoreEntryDto> stores) {
+        if (stores == null) {
+            return List.of();
+        }
+        return stores.stream()
+                .map(s -> new RawgStoreEntry(s.id(), s.url(), toStoreRef(s.store())))
+                .toList();
+    }
+
+    public List<RawgScreenshot> toScreenshots(List<RawgScreenshotDto> screenshots) {
+        if (screenshots == null) {
+            return List.of();
+        }
+        return screenshots.stream()
+                .map(s -> new RawgScreenshot(s.id(), s.image(), s.width(), s.height(), s.isDeleted()))
+                .toList();
+    }
+
     public RawgDetails toDetails(
             RawgGameDto detail,
             List<RawgMovieDto> movies,
@@ -216,6 +273,27 @@ public final class RawgMapper {
                 toDlcSummaries(additions),
                 toCreators(creators),
                 toScreenshotUrls(screenshots),
+                detail.tba(),
+                detail.updated(),
+                detail.backgroundImageAdditional(),
+                toRatings(detail.ratings()),
+                detail.ratingsCount(),
+                detail.reviewsCount(),
+                detail.reviewsTextCount(),
+                detail.metacriticUrl(),
+                detail.playtime(),
+                detail.parentsCount(),
+                detail.gameSeriesCount(),
+                detail.achievementsCount(),
+                detail.parentAchievementsCount(),
+                toClip(detail.clip()),
+                detail.alternativeNames() == null ? List.of() : List.copyOf(detail.alternativeNames()),
+                toEsrbRating(detail.esrbRating()),
+                toStoreEntries(detail.stores()),
+                toScreenshots(detail.shortScreenshots()),
+                detail.addedByStatus() == null ? Map.of() : Map.copyOf(detail.addedByStatus()),
+                detail.reactions() == null ? Map.of() : Map.copyOf(detail.reactions()),
+                detail.suggestionsCount(),
                 fetchedAt);
     }
 
@@ -378,6 +456,15 @@ public final class RawgMapper {
         List<RawgScreenshotDto> shortScreenshots = unionShortScreenshots(
                 search.shortScreenshots(), detailsBySlug.shortScreenshots(),
                 safe(detailsById, RawgGameDto::shortScreenshots));
+        Map<String, Integer> addedByStatus = mergeIntMap(
+                search.addedByStatus(), detailsBySlug.addedByStatus(),
+                safe(detailsById, RawgGameDto::addedByStatus));
+        Map<String, Integer> reactions = mergeIntMap(
+                search.reactions(), detailsBySlug.reactions(),
+                safe(detailsById, RawgGameDto::reactions));
+        int suggestionsCount = pickIntCount(search.suggestionsCount(),
+                detailsBySlug.suggestionsCount(),
+                safeInt(detailsById, RawgGameDto::suggestionsCount));
 
         return new RawgGameDto(
                 id, slug, name, nameOriginal, description, descriptionRaw,
@@ -386,7 +473,8 @@ public final class RawgMapper {
                 metacritic, metacriticUrl, playtime, parentsCount, additionsCount, gameSeriesCount,
                 screenshotsCount, moviesCount, creatorsCount, achievementsCount, parentAchievementsCount,
                 clip, alternativeNames, developers, publishers, genres, tags,
-                platforms, parentPlatforms, esrbRating, stores, shortScreenshots);
+                platforms, parentPlatforms, esrbRating, stores, shortScreenshots,
+                addedByStatus, reactions, suggestionsCount);
     }
 
     private static <T> T safe(RawgGameDto dto, Function<RawgGameDto, T> getter) {
@@ -627,5 +715,36 @@ public final class RawgMapper {
         seen.addAll(u);
         seen.addAll(s);
         return List.copyOf(seen);
+    }
+
+    private static Map<String, Integer> mergeIntMap(
+            Map<String, Integer> search,
+            Map<String, Integer> slug,
+            Map<String, Integer> id) {
+        Map<String, Integer> s = search == null ? Map.of() : search;
+        Map<String, Integer> u = slug == null ? Map.of() : slug;
+        Map<String, Integer> i = id == null ? Map.of() : id;
+        Set<String> allKeys = new LinkedHashSet<>();
+        allKeys.addAll(s.keySet());
+        allKeys.addAll(u.keySet());
+        allKeys.addAll(i.keySet());
+        Map<String, Integer> result = new HashMap<>();
+        for (String key : allKeys) {
+            int best = 0;
+            Integer a = s.get(key);
+            Integer b = u.get(key);
+            Integer c = i.get(key);
+            if (a != null) {
+                best = Math.max(best, a);
+            }
+            if (b != null) {
+                best = Math.max(best, b);
+            }
+            if (c != null) {
+                best = Math.max(best, c);
+            }
+            result.put(key, best);
+        }
+        return Map.copyOf(result);
     }
 }

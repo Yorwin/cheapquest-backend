@@ -2,6 +2,7 @@ package com.cheapquest.backend.domain.rawg;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 public record RawgDetails(
@@ -37,6 +38,27 @@ public record RawgDetails(
         List<RawgDlc> dlcs,
         List<RawgCreator> creators,
         List<String> screenshots,
+        boolean tba,
+        String updated,
+        String backgroundImageAdditional,
+        List<RawgRating> ratings,
+        int ratingsCount,
+        int reviewsCount,
+        int reviewsTextCount,
+        String metacriticUrl,
+        int playtime,
+        int parentsCount,
+        int gameSeriesCount,
+        int achievementsCount,
+        int parentAchievementsCount,
+        RawgClip clip,
+        List<String> alternativeNames,
+        RawgEsrbRating esrbRating,
+        List<RawgStoreEntry> stores,
+        List<RawgScreenshot> shortScreenshots,
+        Map<String, Integer> addedByStatus,
+        Map<String, Integer> reactions,
+        int suggestionsCount,
         Instant fetchedAt) {
 
     public RawgDetails {
@@ -49,6 +71,12 @@ public record RawgDetails(
         dlcs = dlcs == null ? List.of() : List.copyOf(dlcs);
         creators = creators == null ? List.of() : List.copyOf(creators);
         screenshots = screenshots == null ? List.of() : List.copyOf(screenshots);
+        ratings = ratings == null ? List.of() : List.copyOf(ratings);
+        alternativeNames = alternativeNames == null ? List.of() : List.copyOf(alternativeNames);
+        stores = stores == null ? List.of() : List.copyOf(stores);
+        shortScreenshots = shortScreenshots == null ? List.of() : List.copyOf(shortScreenshots);
+        addedByStatus = addedByStatus == null ? Map.of() : Map.copyOf(addedByStatus);
+        reactions = reactions == null ? Map.of() : Map.copyOf(reactions);
         Objects.requireNonNull(slug, "slug");
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(fetchedAt, "fetchedAt");

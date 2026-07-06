@@ -117,7 +117,10 @@ public final class RawgDtoFixtures {
                     null,                           // parentPlatforms
                     null,                           // esrbRating
                     null,                           // stores
-                    null                            // shortScreenshots
+                    null,                           // shortScreenshots
+                    null,                           // addedByStatus
+                    null,                           // reactions
+                    0                               // suggestionsCount
             );
         }
     }

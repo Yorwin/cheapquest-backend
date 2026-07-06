@@ -69,7 +69,11 @@ public final class RawgDocumentDtoFixtures {
                     0, 0, 0, 0,
                     developers, publishers, genres, tags,
                     List.of(), List.of(), List.of(), List.of(),
-                    screenshots, fetchedAt);
+                    screenshots,
+                    false, null, null, List.of(), 0, 0, 0, null, 0, 0, 0, 0, 0,
+                    null, List.of(), null, List.of(), List.of(),
+                    java.util.Map.of(), java.util.Map.of(), 0,
+                    fetchedAt);
         }
     }
 }

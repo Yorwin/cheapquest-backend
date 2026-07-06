@@ -1,6 +1,6 @@
 package com.cheapquest.backend.domain.sections;
 
-import com.cheapquest.backend.dto.firebase.OfferDto;
+import com.cheapquest.backend.domain.Offer;
 import java.math.BigDecimal;
 import java.util.Map;
 import java.util.Objects;
@@ -31,7 +31,7 @@ import java.util.Objects;
 public record SectionItem(
         String slug,
         String title,
-        OfferDto bestDeal,
+        Offer bestDeal,
         BigDecimal score,
         Map<String, String> extra) {
 

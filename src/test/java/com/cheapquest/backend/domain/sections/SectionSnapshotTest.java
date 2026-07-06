@@ -3,7 +3,7 @@ package com.cheapquest.backend.domain.sections;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 
-import com.cheapquest.backend.dto.firebase.OfferDto;
+import com.cheapquest.backend.domain.Offer;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -20,7 +20,7 @@ class SectionSnapshotTest {
     private static SectionItem item() {
         return new SectionItem(
                 "slug", "Title",
-                new OfferDto("1", "Steam", null,
+                new Offer("1", "Steam", null,
                         new BigDecimal("9.99"), new BigDecimal("29.99"),
                         new BigDecimal("66.70"), null),
                 new BigDecimal("66.70"),

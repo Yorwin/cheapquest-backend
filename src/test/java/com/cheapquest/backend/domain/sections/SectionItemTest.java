@@ -3,7 +3,7 @@ package com.cheapquest.backend.domain.sections;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 
-import com.cheapquest.backend.dto.firebase.OfferDto;
+import com.cheapquest.backend.domain.Offer;
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 
 class SectionItemTest {
 
-    private static final OfferDto OFFER = new OfferDto(
+    private static final Offer OFFER = new Offer(
             "1", "Steam", "https://example.com/steam.png",
             new BigDecimal("9.99"), new BigDecimal("29.99"),
             new BigDecimal("66.70"), "https://example.com/deal");

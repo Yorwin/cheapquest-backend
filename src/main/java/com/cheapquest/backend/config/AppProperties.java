@@ -3,6 +3,7 @@ package com.cheapquest.backend.config;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
+import com.cheapquest.backend.domain.sections.SectionName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -196,6 +197,27 @@ public final class AppProperties {
 
     public int refreshRawgMaxAgeDays() {
         return Integer.parseInt(props.getProperty("refresh.rawg-max-age-days", "180"));
+    }
+
+    /**
+     * Max items kept in the section snapshot for the given
+     * section. The default values match the per-section
+     * quotas from AGENTS.md (populares=11, nuevas=8,
+     * vintage=8, mejores-promos=5, bajos-historicos=5);
+     * each can be overridden by a {@code sections.max-items.<slug>}
+     * property in {@code application.properties}.
+     */
+    public int sectionsMaxItems(SectionName name) {
+        int fallback = switch (name) {
+            case POPULARES -> 11;
+            case NUEVAS_OFERTAS -> 8;
+            case VINTAGE -> 8;
+            case MEJORES_PROMOS -> 5;
+            case BAJOS_HISTORICOS -> 5;
+        };
+        return Integer.parseInt(
+                props.getProperty("sections.max-items." + name.slug(),
+                        Integer.toString(fallback)));
     }
 
     /**

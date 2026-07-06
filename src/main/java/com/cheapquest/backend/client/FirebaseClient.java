@@ -670,4 +670,16 @@ public final class FirebaseClient {
             return true;
         }
     }
+
+    /**
+     * Raw {@link Firestore} handle for callers that need
+     * access outside the surface this client exposes (e.g. a
+     * sibling service that talks to a different collection).
+     * Returns the same instance the client was constructed
+     * with; lifecycle is owned by the caller (typically the
+     * {@code FirebaseApp} singleton).
+     */
+    public Firestore getFirestore() {
+        return firestore;
+    }
 }

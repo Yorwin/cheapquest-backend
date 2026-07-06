@@ -285,6 +285,37 @@ public final class App {
         com.cheapquest.backend.service.GameQueueService queueService =
                 new com.cheapquest.backend.service.GameQueueService(firebaseClient);
 
+        // Sections pipeline. The catalog is the games collection
+        // (read via FirebaseClient, projected to GameView via
+        // GameViewMapper) and the snapshots land under the
+        // sections / sections-history collection paths. Only
+        // MejoresPromosBuilder is wired for now; the other four
+        // builders land in their own commits and the
+        // SectionService will pick them up automatically through
+        // the builders list.
+        com.cheapquest.backend.mapper.SectionSnapshotMapper sectionSnapshotMapper =
+                new com.cheapquest.backend.mapper.SectionSnapshotMapper();
+        com.cheapquest.backend.mapper.GameViewMapper gameViewMapper =
+                new com.cheapquest.backend.mapper.GameViewMapper();
+        com.cheapquest.backend.mapper.PublicSectionMapper publicSectionMapper =
+                new com.cheapquest.backend.mapper.PublicSectionMapper();
+        com.cheapquest.backend.service.sections.SectionStore sectionStore =
+                new com.cheapquest.backend.service.sections.FirestoreSectionStore(
+                        firebaseClient.getFirestore(),
+                        props.firestoreCollectionSectionsPath(),
+                        sectionSnapshotMapper);
+        com.cheapquest.backend.service.sections.SectionsLock sectionsLock =
+                new com.cheapquest.backend.service.sections.InMemorySectionsLock();
+        java.util.List<com.cheapquest.backend.service.sections.SectionBuilder> sectionBuilders =
+                java.util.List.of(new com.cheapquest.backend.service.sections.builders.MejoresPromosBuilder(
+                        props.sectionsMaxItems(com.cheapquest.backend.domain.sections.SectionName.MEJORES_PROMOS)));
+        java.util.function.Supplier<java.util.List<com.cheapquest.backend.domain.sections.GameView>> catalogSupplier =
+                () -> gameViewMapper.toGameViews(firebaseClient.readAll());
+        com.cheapquest.backend.service.sections.SectionsService sectionsService =
+                new com.cheapquest.backend.service.sections.SectionsService(
+                        sectionStore, sectionsLock, sectionBuilders,
+                        catalogSupplier, clock);
+
         java.util.Map<String, com.sun.net.httpserver.HttpHandler> routes = new java.util.LinkedHashMap<>();
         routes.put("/health", new HealthEndpoint(clock));
         routes.put("/admin/refresh", new AdminRefreshEndpoint(
@@ -299,6 +330,18 @@ public final class App {
         routes.put("/admin/games", new AdminGamesRouter(
                 new AdminIngestGamesEndpoint(props.adminRefreshToken(), ingestService, gson),
                 new AdminListGamesEndpoint(props.adminRefreshToken(), queueService)));
+        // /admin/sections is the exact path; /admin/sections/
+        // (with trailing slash) captures /admin/sections/{name}
+        // because HttpServer dispatches by longest-prefix match.
+        routes.put("/admin/sections", new com.cheapquest.backend.endpoint.sections.AdminSectionsEndpoint(
+                props.adminRefreshToken(), sectionsService, publicSectionMapper, gson));
+        routes.put("/admin/sections/", new com.cheapquest.backend.endpoint.sections.AdminOneSectionEndpoint(
+                props.adminRefreshToken(), sectionsService, publicSectionMapper, gson));
+        // Same pattern for the public read endpoints.
+        routes.put("/sections", new com.cheapquest.backend.endpoint.sections.PublicSectionsListEndpoint(
+                sectionStore, publicSectionMapper, gson));
+        routes.put("/sections/", new com.cheapquest.backend.endpoint.sections.PublicSectionReadEndpoint(
+                sectionStore, publicSectionMapper, gson));
 
         try {
             com.sun.net.httpserver.HttpServer server = HttpServerBootstrap.start(

@@ -152,6 +152,12 @@ public final class App {
 			return;
 		}
 
+		if ("translate-fixtures".equals(mode)) {
+			runTranslateFixtures(props, clock);
+			log.info("translate_fixtures_end");
+			return;
+		}
+
 		if ("serve".equals(mode)) {
 			runServe(firebaseClient, service, rawgService, validator, merger, props, gson, clock);
 			return;
@@ -345,22 +351,84 @@ public final class App {
             log.warn("translate_abort reason=firebase_not_ready");
             return null;
         }
-        String deeplKey = props.deeplApiKey();
-        if (deeplKey == null || deeplKey.isBlank()) {
-            log.warn("translate_abort reason=deepl_api_key_missing");
+        DeepLClient deeplClient = buildDeepLClient(props, clock);
+        if (deeplClient == null) {
             return null;
         }
-        // Empty deepl.base-url -> SDK auto-detects the endpoint
-        // from the API key suffix (":fx" -> free, no suffix -> pro).
-        DeepLClient deeplClient = new DeepLClient(
+        return new TranslationService(
+                firebaseClient, deeplClient, firebaseMapper, clock,
+                props.refreshMaxRetries());
+    }
+
+    /**
+     * Builds the {@link DeepLClient} from {@code application.properties}
+     * (key, base URL, batch size, 7-day cache TTL, 10k entries).
+     * Returns {@code null} and logs a warning if the API key is
+     * missing, so the caller can short-circuit cleanly.
+     */
+    private static DeepLClient buildDeepLClient(AppProperties props, Clock clock) {
+        String deeplKey = props.deeplApiKey();
+        if (deeplKey == null || deeplKey.isBlank()) {
+            log.warn("deepl_abort reason=deepl_api_key_missing");
+            return null;
+        }
+        return new DeepLClient(
                 deeplKey, props.deeplBaseUrl(),
                 props.deeplBatchSize(),
                 java.time.Duration.ofHours(168).toMillis(),
                 10_000,
                 clock);
-        return new TranslationService(
-                firebaseClient, deeplClient, firebaseMapper, clock,
-                props.refreshMaxRetries());
+    }
+
+    /**
+     * Smoke test for the {@link DeepLClient}: translates the name
+     * (and a short tag list, to mimic a real game document) of every
+     * entry in {@link GameFixtures} into both {@code es} and {@code fr}.
+     * One DeepL call per (fixture, locale); the order within each
+     * call is preserved and a single batch is enough since the
+     * fixture list is tiny.
+     *
+     * <p>Useful as a manual sanity check after touching the
+     * DeepL wiring or rotating the API key:
+     * <pre>
+     * mvn -q -DskipTests package
+     * java -Dapp.mode=translate-fixtures -jar target/backend-cheapquest.jar
+     * </pre>
+     */
+    private static void runTranslateFixtures(AppProperties props, Clock clock) {
+        DeepLClient deeplClient = buildDeepLClient(props, clock);
+        if (deeplClient == null) {
+            return;
+        }
+        List<HardcodedGame> fixtures = GameFixtures.all();
+        log.info("translate_fixtures_start count={} locales=es,fr", fixtures.size());
+        for (HardcodedGame game : fixtures) {
+            translateOneFixture(deeplClient, game);
+        }
+        log.info("translate_fixtures_done count={}", fixtures.size());
+    }
+
+    private static void translateOneFixture(DeepLClient deeplClient, HardcodedGame game) {
+        log.info("translate_fixture_start name=\"{}\"", game.name());
+        // The fixtures only carry a name; we add a couple of
+        // representative tag strings so the call exercises the
+        // batch/cache plumbing instead of translating a single
+        // string. Order is preserved by DeepLClient#translate.
+        List<String> inputs = List.of(
+                game.name(),
+                "Action",
+                "Puzzle",
+                "Single-player");
+        for (String locale : List.of("es", "fr")) {
+            try {
+                List<String> translated = deeplClient.translate(inputs, locale);
+                log.info("translate_fixture_ok name=\"{}\" locale={} en=\"{}\" out=\"{}\" tags_out={}",
+                        game.name(), locale, inputs.get(0), translated.get(0), translated.subList(1, translated.size()));
+            } catch (com.cheapquest.backend.exception.TranslationFailedException e) {
+                log.error("translate_fixture_failed name=\"{}\" locale={} error={}: {}",
+                        game.name(), locale, e.getClass().getSimpleName(), e.getMessage());
+            }
+        }
     }
 
     private static List<CheapSharkStoreDto> loadStoresOrAbort(CheapSharkClient client) {

@@ -221,6 +221,21 @@ public final class AppProperties {
     }
 
     /**
+     * How old a {@code bestDeal.firstSeenAt} can be for the
+     * game to qualify for the "nuevas ofertas" section.
+     * A deal that became the best more than this many days
+     * ago is no longer "new" from the product's point of
+     * view. Default 2 days matches the daily hydration
+     * cadence: any deal that became the best in the most
+     * recent refresh (and possibly the one before) is
+     * considered fresh.
+     */
+    public int sectionsNewOffersWindowDays() {
+        return Integer.parseInt(
+                props.getProperty("sections.new-offers.window-days", "2"));
+    }
+
+    /**
      * How old a pending entry's {@code lastAttemptAt} can be
      * before the startup recovery resets its attempt counter.
      * Prevents chronic false-failures after a JVM crash: an entry

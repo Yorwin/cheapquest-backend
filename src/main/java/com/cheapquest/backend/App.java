@@ -332,13 +332,14 @@ public final class App {
         // Sections pipeline. The catalog is the games collection
         // (read via FirebaseClient, projected to GameView via
         // GameViewMapper) and the snapshots land under the
-        // sections / sections-history collection paths.
-        // MejoresPromosBuilder, VintageBuilder,
-        // BajosHistoricosBuilder and PopularesBuilder are
-        // wired for now; the last builder (nuevas-ofertas)
-        // is blocked on a 'first seen at' signal that the
-        // pipeline does not produce yet, and lands in its
-        // own commit when that is in place.
+        // sections / sections-history collection paths. All
+        // five builders (mejores-promos, vintage,
+        // bajos-historicos, populares, nuevas-ofertas) are
+        // wired. The "nuevas-ofertas" builder reads
+        // bestDeal.firstSeenAt, which the hydration pipeline
+        // populates per the (storeId, price, savings) identity
+        // rule; the backfill script in scripts/ pre-fills
+        // the field for the existing catalog.
         com.cheapquest.backend.mapper.SectionSnapshotMapper sectionSnapshotMapper =
                 new com.cheapquest.backend.mapper.SectionSnapshotMapper();
         com.cheapquest.backend.mapper.GameViewMapper gameViewMapper =
@@ -362,7 +363,11 @@ public final class App {
                         new com.cheapquest.backend.service.sections.builders.BajosHistoricosBuilder(
                                 props.sectionsMaxItems(com.cheapquest.backend.domain.sections.SectionName.BAJOS_HISTORICOS)),
                         new com.cheapquest.backend.service.sections.builders.PopularesBuilder(
-                                props.sectionsMaxItems(com.cheapquest.backend.domain.sections.SectionName.POPULARES)));
+                                props.sectionsMaxItems(com.cheapquest.backend.domain.sections.SectionName.POPULARES)),
+                        new com.cheapquest.backend.service.sections.builders.NuevasOfertasBuilder(
+                                props.sectionsMaxItems(com.cheapquest.backend.domain.sections.SectionName.NUEVAS_OFERTAS),
+                                props.sectionsNewOffersWindowDays(),
+                                clock));
         java.util.function.Supplier<java.util.List<com.cheapquest.backend.domain.sections.GameView>> catalogSupplier =
                 () -> gameViewMapper.toGameViews(firebaseClient.readAll());
         com.cheapquest.backend.service.sections.SectionsService sectionsService =

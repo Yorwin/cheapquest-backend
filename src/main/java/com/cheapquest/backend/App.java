@@ -403,9 +403,12 @@ public final class App {
                 sectionStore, publicSectionMapper, gson));
 
         try {
-            com.sun.net.httpserver.HttpServer server = HttpServerBootstrap.start(
-                    props.adminRefreshPort(), routes);
-            log.info("serve_endless port={} note=block_until_shutdown", props.adminRefreshPort());
+            int port = props.effectivePort();
+            log.info("serve_starting port={} source={}",
+                    port,
+                    System.getenv("PORT") != null ? "env:PORT" : "property:admin.refresh.port");
+            com.sun.net.httpserver.HttpServer server = HttpServerBootstrap.start(port, routes);
+            log.info("serve_endless port={} note=block_until_shutdown", port);
             Thread.currentThread().join();
         } catch (java.io.IOException | InterruptedException e) {
             if (e instanceof InterruptedException) {

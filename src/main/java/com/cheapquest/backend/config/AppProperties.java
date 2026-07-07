@@ -122,6 +122,21 @@ public final class AppProperties {
     }
 
     public String firebaseCredentialsPath() {
+        // Resolution order: env FIREBASE_CREDENTIALS_PATH
+        // (so dev local can point at a real file without
+        // rebuilding application.properties) -> the property
+        // value (which carries the Cloud Run default
+        // /var/secrets/firebase/credentials.json) -> null.
+        // We re-read the env here on purpose: the resolver
+        // in resolvePlaceholders only consults the env when
+        // the property uses a ${...} placeholder, and the
+        // default we ship in application.properties is a
+        // literal path. Without this method-level check the
+        // dev local could not override the Cloud Run default.
+        String env = System.getenv("FIREBASE_CREDENTIALS_PATH");
+        if (env != null && !env.isBlank()) {
+            return env;
+        }
         return props.getProperty("firebase.credentials.path");
     }
 
@@ -161,6 +176,31 @@ public final class AppProperties {
 
     public int adminRefreshPort() {
         return Integer.parseInt(props.getProperty("admin.refresh.port", "8080"));
+    }
+
+    /**
+     * Port the {@code serve} mode binds the {@code HttpServer}
+     * to. Resolution order: {@code PORT} env var (the
+     * Cloud Run contract — GCP injects it at container
+     * start) → {@code admin.refresh.port} property → 8080.
+     * Reading {@code PORT} explicitly avoids the silent
+     * failure mode where someone changes the GCP-side port
+     * and the JVM keeps listening on the property default.
+     */
+    public int effectivePort() {
+        String env = System.getenv("PORT");
+        if (env != null && !env.isBlank()) {
+            try {
+                int parsed = Integer.parseInt(env.trim());
+                if (parsed > 0 && parsed < 65536) {
+                    return parsed;
+                }
+                log.warn("app_properties_invalid_port_env value={} falling_back_to_property", env);
+            } catch (NumberFormatException e) {
+                log.warn("app_properties_unparseable_port_env value={} falling_back_to_property", env);
+            }
+        }
+        return adminRefreshPort();
     }
 
     public int adminRefreshIntervalHours() {

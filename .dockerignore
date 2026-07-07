@@ -1,0 +1,37 @@
+# Keep the Docker build context small and the layer cache
+# stable. Anything not on this list is sent to the daemon
+# on `docker build`.
+
+# Build output (re-built inside the image)
+target/
+
+# Local secrets
+firebase-credentials.json
+*.env
+.env.*
+!.env.example
+
+# IDE / OS noise
+.vscode/
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# CI / docs that are not needed at build time
+.github/
+docs/
+*.md
+!README.md
+
+# Scripts / fixtures
+*.log
+server*.log
+hydrate.log
+backfill.log
+diagnose.log

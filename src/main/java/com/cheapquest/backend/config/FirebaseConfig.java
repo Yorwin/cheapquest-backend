@@ -38,31 +38,82 @@ public final class FirebaseConfig {
             log.debug("firebase_already_initialized");
             return true;
         }
-        String credentialsPath = props.firebaseCredentialsPath();
         String projectId = props.firebaseProjectId();
-        if (StringUtils.isBlank(credentialsPath) || StringUtils.isBlank(projectId)) {
-            log.warn("firebase_init_skipped reason=missing_config projectId_present={} credentials_path_present={}",
-                    !StringUtils.isBlank(projectId), !StringUtils.isBlank(credentialsPath));
+        if (StringUtils.isBlank(projectId)) {
+            log.warn("firebase_init_skipped reason=missing_project_id");
             return false;
         }
-        Path path = Paths.get(credentialsPath);
-        if (!Files.isRegularFile(path)) {
-            log.warn("firebase_init_skipped reason=credentials_file_not_found path={}", credentialsPath);
+
+        CredentialsSource source = resolveCredentials(props.firebaseCredentialsPath());
+        if (source == null) {
+            log.warn("firebase_init_skipped reason=no_credentials_resolved");
             return false;
         }
-        try (InputStream in = Files.newInputStream(path)) {
+
+        try {
             FirebaseOptions options = FirebaseOptions.builder()
-                    .setCredentials(GoogleCredentials.fromStream(in))
+                    .setCredentials(source.credentials())
                     .setProjectId(projectId)
                     .build();
             FirebaseApp.initializeApp(options);
-            log.info("firebase_initialized projectId={}", projectId);
+            log.info("firebase_initialized projectId={} source={}", projectId, source.label());
             return true;
         } catch (Exception e) {
-            log.error("firebase_init_failed path={} error={}: {}",
-                    credentialsPath, e.getClass().getSimpleName(), e.getMessage(), e);
+            log.error("firebase_init_failed source={} error={}: {}",
+                    source.label(), e.getClass().getSimpleName(), e.getMessage(), e);
             return false;
         }
+    }
+
+    /**
+     * Resolves the credentials in this order:
+     * <ol>
+     *   <li>If {@code credentialsPath} points to an existing
+     *       regular file, load it as a service-account JSON
+     *       (dev local: the operator runs the binary with
+     *       {@code -e FIREBASE_CREDENTIALS_PATH=...}).</li>
+     *   <li>Otherwise, fall back to
+     *       {@link GoogleCredentials#getApplicationDefault()},
+     *       which reads {@code GOOGLE_APPLICATION_CREDENTIALS}
+     *       if present and otherwise consults the metadata
+     *       server. Cloud Run injects a service account via
+     *       the metadata server when the service is bound
+     *       to one in the deploy flags.</li>
+     *   <li>Returns {@code null} if both paths fail to
+     *       produce credentials (so the caller can log a
+     *       clear "init skipped" message).</li>
+     * </ol>
+     */
+    private static CredentialsSource resolveCredentials(String credentialsPath) {
+        if (!StringUtils.isBlank(credentialsPath)) {
+            Path path = Paths.get(credentialsPath);
+            if (Files.isRegularFile(path)) {
+                try (InputStream in = Files.newInputStream(path)) {
+                    return new CredentialsSource(
+                            "file:" + credentialsPath,
+                            GoogleCredentials.fromStream(in));
+                } catch (Exception e) {
+                    log.warn("firebase_credentials_file_read_failed path={} error={}: {}",
+                            credentialsPath, e.getClass().getSimpleName(), e.getMessage());
+                }
+            } else {
+                log.info("firebase_credentials_file_not_found path={} trying_adc",
+                        credentialsPath);
+            }
+        }
+        try {
+            GoogleCredentials adc = GoogleCredentials.getApplicationDefault();
+            if (adc != null) {
+                return new CredentialsSource("application-default", adc);
+            }
+        } catch (Exception e) {
+            log.warn("firebase_adc_resolve_failed error={}: {}",
+                    e.getClass().getSimpleName(), e.getMessage());
+        }
+        return null;
+    }
+
+    private record CredentialsSource(String label, GoogleCredentials credentials) {
     }
 
     public boolean isInitialized() {

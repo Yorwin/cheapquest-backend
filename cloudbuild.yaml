@@ -1,0 +1,112 @@
+# Cloud Build pipeline for backend-cheapquest.
+#
+# One invocation does the full build -> push -> deploy
+# cycle. The image lands in Artifact Registry and the new
+# revision of the Cloud Run service is rolled out 100%
+# (the default). Traffic migration between revisions is
+# left for a follow-up; for the cron-driven workload here
+# a single cold start per revision is acceptable.
+#
+# Trigger manually:
+#   gcloud builds submit --config=cloudbuild.yaml \
+#     --substitutions=_REGION=europe-west1,_REPO=cheapquest
+#
+# Or wire to a Cloud Build trigger on push to main.
+#
+# Required substitutions (passed by the caller or read from
+# the trigger):
+#   _REGION    - GCP region (e.g. europe-west1)
+#   _REPO      - Artifact Registry repo name (e.g. cheapquest)
+#   PROJECT_ID - auto-resolved by Cloud Build, do not pass
+
+steps:
+  # 1) Build the image with BuildKit so the cache-mount
+  # directives in the Dockerfile are honoured.
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/backend-cheapquest:${SHORT_SHA}
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/backend-cheapquest:latest
+      - --cache-from=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/backend-cheapquest:latest
+      - .
+
+  # 2) Push both tags in one step (latest gets the most
+  # recent short SHA on every build).
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - --all-tags
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/backend-cheapquest
+
+  # 3) Deploy the new revision. Cloud Run does not need the
+  # previous revision to drain: each request that lands on
+  # an old revision finishes, the new one accepts new
+  # traffic. With min-instances=0 the cold start of the new
+  # revision is at most a few seconds.
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - cheapquest-backend
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/backend-cheapquest:${SHORT_SHA}
+      - --region=${_REGION}
+      - --platform=managed
+      - --service-account=cheapquest-runtime@${PROJECT_ID}.iam.gserviceaccount.com
+      # Block public traffic. Only Cloud Scheduler (via
+      # OIDC) and the project owner can invoke the service.
+      - --no-allow-unauthenticated
+      # Refuse traffic from outside Google Cloud. The
+      # --ingress=internal flag accepts Cloud Scheduler and
+      # the project's other Cloud Run services; it rejects
+      # the public internet entirely.
+      - --ingress=internal
+      # Single instance, no warm pool: the only callers are
+      # the 2 crons (every 6h and every 24h), no human user
+      # is waiting. Cold starts add 5-10s, well within the
+      # 600s cron deadline.
+      - --min-instances=0
+      - --max-instances=1
+      - --memory=512Mi
+      - --cpu=1
+      # Cloud Scheduler's default attempt deadline is 60s
+      # for HTTP targets; we extend it to 600s so a cold
+      # start plus a 19-game hydration has headroom.
+      - --timeout=600
+      # 4 is enough: the crons are sequential and the
+      # endpoint is a single HttpServer. Raising this only
+      # burns memory.
+      - --concurrency=4
+      # The four secrets come from Secret Manager. Each
+      # secret is mounted as an env var so the application
+      # reads them via System.getenv, which matches the
+      # `${ENV_VAR}` placeholders in application.properties.
+      - --set-secrets=RAWG_API_KEY=rawg-api-key:latest,DEEPL_API_KEY=deepl-api-key:latest,ADMIN_REFRESH_TOKEN=admin-refresh-token:latest,FIREBASE_CREDENTIALS_PATH=firebase-credentials:latest
+      # Non-secret config. Anything that depends on the
+      # environment goes here.
+      - --set-env-vars=FIREBASE_PROJECT_ID=${PROJECT_ID},SUPPORTED_LANGUAGES=es,en,fr
+      # Allow gradual rollout: do not take 100% of the
+      # traffic from the previous revision immediately.
+      # Cloud Run's default is 100% on a deploy; we keep it
+      # explicit so a future operator can change one number.
+      - --no-traffic
+
+images:
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/backend-cheapquest:${SHORT_SHA}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/backend-cheapquest:latest
+
+substitutions:
+  _REGION: europe-west1
+  _REPO: cheapquest
+
+options:
+  # Keep logs in the build region; speeds up the
+  # troubleshooting loop on failed builds.
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+  # 10 min is enough for the Maven build; tweak up if
+  # the dependency graph grows.
+  timeout: 1200s

@@ -332,11 +332,12 @@ public final class App {
         // Sections pipeline. The catalog is the games collection
         // (read via FirebaseClient, projected to GameView via
         // GameViewMapper) and the snapshots land under the
-        // sections / sections-history collection paths. Only
-        // MejoresPromosBuilder is wired for now; the other four
-        // builders land in their own commits and the
-        // SectionService will pick them up automatically through
-        // the builders list.
+        // sections / sections-history collection paths.
+        // MejoresPromosBuilder and VintageBuilder are wired
+        // for now; the other three builders (populares,
+        // nuevas-ofertas, bajos-historicos) land in their own
+        // commits and the SectionService will pick them up
+        // automatically through the builders list.
         com.cheapquest.backend.mapper.SectionSnapshotMapper sectionSnapshotMapper =
                 new com.cheapquest.backend.mapper.SectionSnapshotMapper();
         com.cheapquest.backend.mapper.GameViewMapper gameViewMapper =
@@ -351,8 +352,12 @@ public final class App {
         com.cheapquest.backend.service.sections.SectionsLock sectionsLock =
                 new com.cheapquest.backend.service.sections.InMemorySectionsLock();
         java.util.List<com.cheapquest.backend.service.sections.SectionBuilder> sectionBuilders =
-                java.util.List.of(new com.cheapquest.backend.service.sections.builders.MejoresPromosBuilder(
-                        props.sectionsMaxItems(com.cheapquest.backend.domain.sections.SectionName.MEJORES_PROMOS)));
+                java.util.List.of(
+                        new com.cheapquest.backend.service.sections.builders.MejoresPromosBuilder(
+                                props.sectionsMaxItems(com.cheapquest.backend.domain.sections.SectionName.MEJORES_PROMOS)),
+                        new com.cheapquest.backend.service.sections.builders.VintageBuilder(
+                                props.sectionsMaxItems(com.cheapquest.backend.domain.sections.SectionName.VINTAGE),
+                                clock));
         java.util.function.Supplier<java.util.List<com.cheapquest.backend.domain.sections.GameView>> catalogSupplier =
                 () -> gameViewMapper.toGameViews(firebaseClient.readAll());
         com.cheapquest.backend.service.sections.SectionsService sectionsService =

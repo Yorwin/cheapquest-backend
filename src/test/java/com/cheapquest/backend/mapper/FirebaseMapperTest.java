@@ -137,7 +137,7 @@ class FirebaseMapperTest {
         assertThat(block.offerCount()).isEqualTo(2);
         assertThat(block.bestDeal()).isEqualTo(new OfferDto("1", "Steam", "https://steam.png",
                 new BigDecimal("1.99"), new BigDecimal("9.99"), new BigDecimal("80.080"),
-                "https://deal/1", null));
+                "https://deal/1", T.toString()));
         assertThat(block.deals()).hasSize(1);
         assertThat(block.deals().get(0).storeId()).isEqualTo("7");
     }
@@ -148,6 +148,134 @@ class FirebaseMapperTest {
                 "https://thumb.jpg", null, 0, null, List.of(), T);
         CheapsharkBlock block = mapper.toCheapsharkBlock(deals);
         assertThat(block.deals()).isUnmodifiable();
+    }
+
+    @Test
+    void toCheapsharkBlock_withPreviousBestNull_setsFirstSeenAtToNow() {
+        Offer best = new Offer("1", "Steam", null,
+                new BigDecimal("1.99"), new BigDecimal("9.99"), new BigDecimal("80.080"),
+                "https://deal/1", null);
+        GameDeals deals = new GameDeals("82", "Portal", "Portal", "PORTAL",
+                "https://thumb.jpg", null, 1, best, List.of(), T);
+
+        CheapsharkBlock block = mapper.toCheapsharkBlock(deals, null);
+
+        assertThat(block.bestDeal().firstSeenAt()).isEqualTo(T.toString());
+    }
+
+    @Test
+    void toCheapsharkBlock_withSameDeal_preservesFirstSeenAt() {
+        Offer best = new Offer("1", "Steam", null,
+                new BigDecimal("1.99"), new BigDecimal("9.99"), new BigDecimal("80.080"),
+                "https://deal/1", null);
+        GameDeals deals = new GameDeals("82", "Portal", "Portal", "PORTAL",
+                "https://thumb.jpg", null, 1, best, List.of(), T);
+        OfferDto previousBest = new OfferDto("1", "Steam", null,
+                new BigDecimal("1.99"), new BigDecimal("9.99"), new BigDecimal("80.080"),
+                "https://deal/1",
+                "2026-06-29T10:00:00Z");
+
+        CheapsharkBlock block = mapper.toCheapsharkBlock(deals, previousBest);
+
+        assertThat(block.bestDeal().firstSeenAt()).isEqualTo("2026-06-29T10:00:00Z");
+    }
+
+    @Test
+    void toCheapsharkBlock_withSameDealButDifferentUrl_preservesFirstSeenAt() {
+        Offer best = new Offer("1", "Steam", null,
+                new BigDecimal("1.99"), new BigDecimal("9.99"), new BigDecimal("80.080"),
+                "https://deal/1-ROTATED", null);
+        GameDeals deals = new GameDeals("82", "Portal", "Portal", "PORTAL",
+                "https://thumb.jpg", null, 1, best, List.of(), T);
+        OfferDto previousBest = new OfferDto("1", "Steam", null,
+                new BigDecimal("1.99"), new BigDecimal("9.99"), new BigDecimal("80.080"),
+                "https://deal/1",
+                "2026-06-29T10:00:00Z");
+
+        CheapsharkBlock block = mapper.toCheapsharkBlock(deals, previousBest);
+
+        assertThat(block.bestDeal().firstSeenAt()).isEqualTo("2026-06-29T10:00:00Z");
+    }
+
+    @Test
+    void toCheapsharkBlock_withDifferentStore_resetsFirstSeenAt() {
+        Offer best = new Offer("2", "GOG", null,
+                new BigDecimal("1.99"), new BigDecimal("9.99"), new BigDecimal("80.080"),
+                "https://deal/2", null);
+        GameDeals deals = new GameDeals("82", "Portal", "Portal", "PORTAL",
+                "https://thumb.jpg", null, 1, best, List.of(), T);
+        OfferDto previousBest = new OfferDto("1", "Steam", null,
+                new BigDecimal("1.99"), new BigDecimal("9.99"), new BigDecimal("80.080"),
+                "https://deal/1",
+                "2026-06-29T10:00:00Z");
+
+        CheapsharkBlock block = mapper.toCheapsharkBlock(deals, previousBest);
+
+        assertThat(block.bestDeal().firstSeenAt()).isEqualTo(T.toString());
+    }
+
+    @Test
+    void toCheapsharkBlock_withDifferentPrice_resetsFirstSeenAt() {
+        Offer best = new Offer("1", "Steam", null,
+                new BigDecimal("0.99"), new BigDecimal("9.99"), new BigDecimal("90.000"),
+                "https://deal/1", null);
+        GameDeals deals = new GameDeals("82", "Portal", "Portal", "PORTAL",
+                "https://thumb.jpg", null, 1, best, List.of(), T);
+        OfferDto previousBest = new OfferDto("1", "Steam", null,
+                new BigDecimal("1.99"), new BigDecimal("9.99"), new BigDecimal("80.080"),
+                "https://deal/1",
+                "2026-06-29T10:00:00Z");
+
+        CheapsharkBlock block = mapper.toCheapsharkBlock(deals, previousBest);
+
+        assertThat(block.bestDeal().firstSeenAt()).isEqualTo(T.toString());
+    }
+
+    @Test
+    void toCheapsharkBlock_withDifferentSavings_resetsFirstSeenAt() {
+        Offer best = new Offer("1", "Steam", null,
+                new BigDecimal("1.99"), new BigDecimal("9.99"), new BigDecimal("90.000"),
+                "https://deal/1", null);
+        GameDeals deals = new GameDeals("82", "Portal", "Portal", "PORTAL",
+                "https://thumb.jpg", null, 1, best, List.of(), T);
+        OfferDto previousBest = new OfferDto("1", "Steam", null,
+                new BigDecimal("1.99"), new BigDecimal("9.99"), new BigDecimal("80.080"),
+                "https://deal/1",
+                "2026-06-29T10:00:00Z");
+
+        CheapsharkBlock block = mapper.toCheapsharkBlock(deals, previousBest);
+
+        assertThat(block.bestDeal().firstSeenAt()).isEqualTo(T.toString());
+    }
+
+    @Test
+    void toCheapsharkBlock_withSameDealButNullPreviousFirstSeen_resetsFirstSeenAt() {
+        Offer best = new Offer("1", "Steam", null,
+                new BigDecimal("1.99"), new BigDecimal("9.99"), new BigDecimal("80.080"),
+                "https://deal/1", null);
+        GameDeals deals = new GameDeals("82", "Portal", "Portal", "PORTAL",
+                "https://thumb.jpg", null, 1, best, List.of(), T);
+        OfferDto previousBest = new OfferDto("1", "Steam", null,
+                new BigDecimal("1.99"), new BigDecimal("9.99"), new BigDecimal("80.080"),
+                "https://deal/1", null);
+
+        CheapsharkBlock block = mapper.toCheapsharkBlock(deals, previousBest);
+
+        assertThat(block.bestDeal().firstSeenAt()).isEqualTo(T.toString());
+    }
+
+    @Test
+    void toCheapsharkBlock_withNullBestDeal_keepsNullFirstSeenAt() {
+        GameDeals deals = new GameDeals("82", "Portal", "Portal", "PORTAL",
+                "https://thumb.jpg", null, 0, null, List.of(), T);
+        OfferDto previousBest = new OfferDto("1", "Steam", null,
+                new BigDecimal("1.99"), new BigDecimal("9.99"), new BigDecimal("80.080"),
+                "https://deal/1",
+                "2026-06-29T10:00:00Z");
+
+        CheapsharkBlock block = mapper.toCheapsharkBlock(deals, previousBest);
+
+        assertThat(block.bestDeal()).isNull();
     }
 
     @Test

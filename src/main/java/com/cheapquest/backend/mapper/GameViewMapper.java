@@ -1,6 +1,7 @@
 package com.cheapquest.backend.mapper;
 
 import com.cheapquest.backend.domain.Offer;
+import com.cheapquest.backend.domain.rawg.RawgDetails;
 import com.cheapquest.backend.domain.sections.CheapsharkView;
 import com.cheapquest.backend.domain.sections.GameView;
 import com.cheapquest.backend.domain.sections.RawgView;
@@ -19,15 +20,26 @@ import java.util.Objects;
  * One mapper instance can be reused across the whole catalog
  * walk; the methods are stateless and thread-safe.
  *
- * <p>The mapping is intentionally lossy: a
- * {@code GameDocumentDto} carries a lot of nested state
- * (locales, validation report, screenshot URLs, ...) that no
- * section needs, so the view narrows to
- * {@code slug, title, cheapshark, rawg}. New fields land on
- * the view (and the mapper) only when a builder asks for
- * them.
+ * <p>The mapping narrows the {@code GameDocumentDto} to what
+ * the section pipeline needs: {@code slug, title, cheapshark,
+ * rawg, rawgDetails}. {@code rawg} is the thin projection
+ * (popularity counters + release date) the score formulas
+ * read; {@code rawgDetails} is the full {@link RawgDetails}
+ * propagated to the {@code SectionItem} so the public API can
+ * surface the description, genres, tags, platforms and the
+ * rest of the RAWG payload without a re-fetch.
  */
 public final class GameViewMapper {
+
+    private final RawgDetailsMapper rawgDetailsMapper;
+
+    public GameViewMapper() {
+        this(new RawgDetailsMapper());
+    }
+
+    public GameViewMapper(RawgDetailsMapper rawgDetailsMapper) {
+        this.rawgDetailsMapper = Objects.requireNonNull(rawgDetailsMapper, "rawgDetailsMapper");
+    }
 
     public List<GameView> toGameViews(Iterable<GameDocumentDto> docs) {
         Objects.requireNonNull(docs, "docs");
@@ -44,7 +56,8 @@ public final class GameViewMapper {
                 doc.slug(),
                 doc.title(),
                 toCheapsharkView(doc.cheapshark()),
-                toRawgView(doc.rawg()));
+                toRawgView(doc.rawg()),
+                toRawgDetails(doc.rawg()));
     }
 
     private static CheapsharkView toCheapsharkView(CheapsharkBlock block) {
@@ -80,5 +93,16 @@ public final class GameViewMapper {
                 data.addedByStatus(),
                 data.reactions(),
                 data.suggestionsCount());
+    }
+
+    private RawgDetails toRawgDetails(RawgBlock block) {
+        if (block == null) {
+            return null;
+        }
+        RawgDocumentDto data = block.data();
+        if (data == null) {
+            return null;
+        }
+        return rawgDetailsMapper.toDomain(data);
     }
 }

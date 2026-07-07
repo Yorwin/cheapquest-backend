@@ -1,6 +1,7 @@
 package com.cheapquest.backend.domain.sections;
 
 import com.cheapquest.backend.domain.Offer;
+import com.cheapquest.backend.domain.rawg.RawgDetails;
 import java.math.BigDecimal;
 import java.util.Map;
 import java.util.Objects;
@@ -27,13 +28,23 @@ import java.util.Objects;
  * fields. All values are strings to keep the type safe at the
  * record boundary; builders are responsible for formatting
  * numbers and dates.
+ *
+ * <p>{@code rawgDetails} is the full {@link RawgDetails} for
+ * the game, propagated from the catalog walk so the public
+ * API can surface the description, genres, tags, platforms,
+ * developers, publishers and the rest of the RAWG payload
+ * without a re-fetch. Nullable: a game in a section may not
+ * have RAWG data (e.g. the cheapshark block came through but
+ * the RAWG lookup 404'd, leaving the doc with no
+ * {@code rawg.data}).
  */
 public record SectionItem(
         String slug,
         String title,
         Offer bestDeal,
         BigDecimal score,
-        Map<String, String> extra) {
+        Map<String, String> extra,
+        RawgDetails rawgDetails) {
 
     public SectionItem {
         Objects.requireNonNull(slug, "slug");

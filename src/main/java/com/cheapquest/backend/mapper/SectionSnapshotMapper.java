@@ -19,11 +19,26 @@ import java.util.Objects;
  * document does not depend on a custom
  * {@code LocalDate}/{@code Instant} adapter.
  *
+ * <p>The full RAWG payload travels as a nested
+ * {@code rawgDetails} field on each item; the conversion
+ * (domain record ↔ persistence DTO) is owned by
+ * {@link RawgDetailsMapper}.
+ *
  * <p>The mapper is stateless and thread-safe: every method
  * is pure, no I/O, no caching. A new instance per request is
  * fine; the {@code SectionsService} holds a single instance.
  */
 public final class SectionSnapshotMapper {
+
+    private final RawgDetailsMapper rawgDetailsMapper;
+
+    public SectionSnapshotMapper() {
+        this(new RawgDetailsMapper());
+    }
+
+    public SectionSnapshotMapper(RawgDetailsMapper rawgDetailsMapper) {
+        this.rawgDetailsMapper = Objects.requireNonNull(rawgDetailsMapper, "rawgDetailsMapper");
+    }
 
     public SectionSnapshotDto toDto(SectionSnapshot snapshot) {
         Objects.requireNonNull(snapshot, "snapshot");
@@ -57,7 +72,8 @@ public final class SectionSnapshotMapper {
                 item.title(),
                 OfferConverter.toDto(item.bestDeal()),
                 item.score(),
-                item.extra());
+                item.extra(),
+                item.rawgDetails() == null ? null : rawgDetailsMapper.toDto(item.rawgDetails()));
     }
 
     private SectionItem toItem(SectionItemDto dto) {
@@ -66,6 +82,7 @@ public final class SectionSnapshotMapper {
                 dto.title(),
                 OfferConverter.toDomain(dto.bestDeal()),
                 dto.score(),
-                dto.extra());
+                dto.extra(),
+                dto.rawgDetails() == null ? null : rawgDetailsMapper.toDomain(dto.rawgDetails()));
     }
 }

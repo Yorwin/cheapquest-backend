@@ -43,7 +43,7 @@ class SectionsServiceTest {
 
     private static final SectionItem ITEM = new SectionItem(
             "slug", "Title", OFFER, new BigDecimal("66.70"),
-            Map.of("savingsPct", "66.70"));
+            Map.of("savingsPct", "66.70"), null);
 
     private SectionStore store;
     private SectionsLock lock;

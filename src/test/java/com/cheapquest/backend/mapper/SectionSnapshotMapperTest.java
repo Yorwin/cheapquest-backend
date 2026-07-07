@@ -29,7 +29,7 @@ class SectionSnapshotMapperTest {
 
     private static final SectionItem ITEM = new SectionItem(
             "slug", "Title", OFFER, new BigDecimal("66.70"),
-            Map.of("savingsPct", "66.70"));
+            Map.of("savingsPct", "66.70"), null);
 
     private final SectionSnapshotMapper mapper = new SectionSnapshotMapper();
 
@@ -90,7 +90,7 @@ class SectionSnapshotMapperTest {
                                 new BigDecimal("9.99"), new BigDecimal("29.99"),
                                 new BigDecimal("66.70"), null, null),
                         new BigDecimal("66.70"),
-                        Map.of("savingsPct", "66.70"))));
+                        Map.of("savingsPct", "66.70"), null)));
         SectionSnapshot snap = mapper.fromDto(dto);
 
         assertThat(snap.name()).isEqualTo(SectionName.MEJORES_PROMOS);
@@ -111,5 +111,50 @@ class SectionSnapshotMapperTest {
         assertThat(back.computedAt()).isEqualTo(original.computedAt());
         assertThat(back.totalCandidates()).isEqualTo(original.totalCandidates());
         assertThat(back.items()).isEqualTo(original.items());
+    }
+
+    @Test
+    void toDto_propagates_rawgDetails() {
+        com.cheapquest.backend.domain.rawg.RawgDetails details =
+                com.cheapquest.backend.fixtures.RawgDetailsFixtures.minimalDetails("slug", "Title");
+        SectionItem item = new SectionItem("slug", "Title", OFFER, new BigDecimal("66.70"),
+                Map.of("savingsPct", "66.70"), details);
+        SectionSnapshotDto dto = mapper.toDto(new SectionSnapshot(
+                SectionName.MEJORES_PROMOS, DAY, T, 1, List.of(item)));
+        assertThat(dto.items().get(0).rawgDetails()).isNotNull();
+        assertThat(dto.items().get(0).rawgDetails().name()).isEqualTo("Title");
+    }
+
+    @Test
+    void fromDto_propagates_rawgDetails() {
+        com.cheapquest.backend.dto.firebase.RawgDocumentDto rawg =
+                com.cheapquest.backend.fixtures.RawgDocumentDtoFixtures
+                        .full("slug", "Title").build();
+        SectionSnapshotDto dto = new SectionSnapshotDto(
+                "mejores-promos", "2026-07-06", "2026-07-06T00:00:05Z", 1,
+                List.of(new SectionItemDto(
+                        "slug", "Title",
+                        new OfferDto("1", "Steam", null,
+                                new BigDecimal("9.99"), new BigDecimal("29.99"),
+                                new BigDecimal("66.70"), null, null),
+                        new BigDecimal("66.70"),
+                        Map.of("savingsPct", "66.70"),
+                        rawg)));
+        SectionSnapshot snap = mapper.fromDto(dto);
+        assertThat(snap.items().get(0).rawgDetails()).isNotNull();
+        assertThat(snap.items().get(0).rawgDetails().name()).isEqualTo("Title");
+    }
+
+    @Test
+    void round_trip_preserves_rawgDetails() {
+        com.cheapquest.backend.domain.rawg.RawgDetails details =
+                com.cheapquest.backend.fixtures.RawgDetailsFixtures.minimalDetails("slug", "Title");
+        SectionItem item = new SectionItem("slug", "Title", OFFER, new BigDecimal("66.70"),
+                Map.of("savingsPct", "66.70"), details);
+        SectionSnapshot original = new SectionSnapshot(
+                SectionName.MEJORES_PROMOS, DAY, T, 1, List.of(item));
+        SectionSnapshot back = mapper.fromDto(mapper.toDto(original));
+        assertThat(back.items().get(0).rawgDetails()).isNotNull();
+        assertThat(back.items().get(0).rawgDetails().name()).isEqualTo("Title");
     }
 }

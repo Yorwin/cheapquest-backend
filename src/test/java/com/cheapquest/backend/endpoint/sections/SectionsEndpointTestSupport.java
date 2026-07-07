@@ -30,7 +30,29 @@ final class SectionsEndpointTestSupport {
     }
 
     static final String TOKEN = "test-admin-token";
-    static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
+    static final Gson GSON = new GsonBuilder()
+            .disableHtmlEscaping()
+            .registerTypeAdapter(java.time.Instant.class,
+                    new com.google.gson.JsonSerializer<java.time.Instant>() {
+                        @Override
+                        public com.google.gson.JsonElement serialize(
+                                java.time.Instant src,
+                                java.lang.reflect.Type typeOfSrc,
+                                com.google.gson.JsonSerializationContext context) {
+                            return new com.google.gson.JsonPrimitive(src.toString());
+                        }
+                    })
+            .registerTypeAdapter(java.time.Instant.class,
+                    new com.google.gson.JsonDeserializer<java.time.Instant>() {
+                        @Override
+                        public java.time.Instant deserialize(
+                                com.google.gson.JsonElement json,
+                                java.lang.reflect.Type typeOfT,
+                                com.google.gson.JsonDeserializationContext context) {
+                            return java.time.Instant.parse(json.getAsString());
+                        }
+                    })
+            .create();
 
     static HttpExchange exchange(String method, String path, String query,
             String authHeader, String body) {

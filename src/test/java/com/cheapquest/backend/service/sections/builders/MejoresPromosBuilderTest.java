@@ -50,7 +50,7 @@ class MejoresPromosBuilderTest {
     @Test
     void games_with_null_cheapshark_view_are_filtered_out() {
         BuildResult r = new MejoresPromosBuilder(5).build(new SectionContext(List.of(
-                new GameView("a", "A", null, null),
+                new GameView("a", "A", null, null, null),
                 gameWith("b", "B", new BigDecimal("80.00"), true, true))));
         assertThat(r.totalCandidates()).isEqualTo(1);
         assertThat(r.items()).hasSize(1);
@@ -145,12 +145,12 @@ class MejoresPromosBuilderTest {
                 : null;
         return new GameView(slug, title,
                 new CheapsharkView(synced, best, null, null, List.of()),
-                null);
+                null, null);
     }
 
     private static GameView gameWithNullBestDeal(String slug, String title) {
         return new GameView(slug, title,
                 new CheapsharkView(true, null, null, null, List.of()),
-                null);
+                null, null);
     }
 }

@@ -174,7 +174,8 @@ public final class NuevasOfertasBuilder implements SectionBuilder {
                         "beaten", intOrZero(status == null ? null : status.get("beaten")),
                         "additions", intOrZero(rawg.additionsCount()),
                         "savingsPct", c.best().savings().toPlainString(),
-                        "firstSeenAt", c.best().firstSeenAt().toString()));
+                        "firstSeenAt", c.best().firstSeenAt().toString()),
+                c.game().rawgDetails());
     }
 
     private static String intOrZero(Integer v) {

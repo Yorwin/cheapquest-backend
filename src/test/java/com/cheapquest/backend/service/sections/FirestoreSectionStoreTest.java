@@ -50,7 +50,7 @@ class FirestoreSectionStoreTest {
             new BigDecimal("66.70"), null, null);
     private static final SectionItem ITEM = new SectionItem(
             "slug", "Title", OFFER, new BigDecimal("66.70"),
-            Map.of("savingsPct", "66.70"));
+            Map.of("savingsPct", "66.70"), null);
     private static final SectionSnapshot SNAPSHOT = new SectionSnapshot(
             SectionName.MEJORES_PROMOS, DAY, NOW, 5, List.of(ITEM));
     private static final SectionSnapshotDto DTO = new SectionSnapshotDto(
@@ -61,7 +61,7 @@ class FirestoreSectionStoreTest {
                             new BigDecimal("9.99"), new BigDecimal("29.99"),
                             new BigDecimal("66.70"), null, null),
                     new BigDecimal("66.70"),
-                    Map.of("savingsPct", "66.70"))));
+                    Map.of("savingsPct", "66.70"), null)));
 
     private static final SectionSnapshotMapper MAPPER = new SectionSnapshotMapper();
 

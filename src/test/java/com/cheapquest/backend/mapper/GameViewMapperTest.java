@@ -133,4 +133,60 @@ class GameViewMapperTest {
         GameView v = mapper.toGameView(doc);
         assertThat(v.cheapshark().offerCount()).isEqualTo(2);
     }
+
+    @Test
+    void toGameView_with_rawg_data_propagates_full_rawgDetails() {
+        RawgDocumentDto rawgData = RawgDocumentDtoFixtures
+                .full("portal", "Portal")
+                .released("2007-10-10")
+                .description("A puzzle game.")
+                .build();
+        RawgBlock rawgBlock = new RawgBlock(true, "2026-06-30T10:05:00Z", rawgData);
+        GameDocumentDto doc = new GameDocumentDto(
+                "Portal", "portal", "en", true, "2026-06-30T10:00:00Z",
+                null, rawgBlock, java.util.Map.of(), null);
+        GameView v = mapper.toGameView(doc);
+        assertThat(v.rawgDetails()).isNotNull();
+        assertThat(v.rawgDetails().slug()).isEqualTo("portal");
+        assertThat(v.rawgDetails().name()).isEqualTo("Portal");
+        assertThat(v.rawgDetails().released()).isEqualTo("2007-10-10");
+        assertThat(v.rawgDetails().description()).isEqualTo("A puzzle game.");
+    }
+
+    @Test
+    void toGameView_with_null_rawg_block_returns_null_rawgDetails() {
+        GameDocumentDto doc = new GameDocumentDto(
+                "title", "slug", "en", true, "2026-01-01T00:00:00Z",
+                null, null, java.util.Map.of(), null);
+        GameView v = mapper.toGameView(doc);
+        assertThat(v.rawgDetails()).isNull();
+    }
+
+    @Test
+    void toGameView_with_rawg_block_but_null_data_returns_null_rawgDetails() {
+        RawgBlock rawgBlock = new RawgBlock(true, "2026-01-01T00:00:00Z", null);
+        GameDocumentDto doc = new GameDocumentDto(
+                "title", "slug", "en", true, "2026-01-01T00:00:00Z",
+                null, rawgBlock, java.util.Map.of(), null);
+        GameView v = mapper.toGameView(doc);
+        assertThat(v.rawgDetails()).isNull();
+    }
+
+    @Test
+    void toGameView_carries_both_rawgView_and_rawgDetails() {
+        RawgDocumentDto rawgData = RawgDocumentDtoFixtures
+                .full("portal", "Portal")
+                .released("2007-10-10")
+                .build();
+        RawgBlock rawgBlock = new RawgBlock(true, "2026-06-30T10:05:00Z", rawgData);
+        GameDocumentDto doc = new GameDocumentDto(
+                "Portal", "portal", "en", true, "2026-06-30T10:00:00Z",
+                null, rawgBlock, java.util.Map.of(), null);
+        GameView v = mapper.toGameView(doc);
+        assertThat(v.rawg()).isNotNull();
+        assertThat(v.rawg().released()).isEqualTo("2007-10-10");
+        assertThat(v.rawgDetails()).isNotNull();
+        assertThat(v.rawgDetails().released()).isEqualTo("2007-10-10");
+        assertThat(v.rawgDetails()).isNotSameAs(v.rawg());
+    }
 }

@@ -18,7 +18,7 @@ class BuildResultTest {
                     new BigDecimal("9.99"), new BigDecimal("29.99"),
                     new BigDecimal("66.70"), null, null),
             new BigDecimal("66.70"),
-            Map.of("savingsPct", "66.70"));
+            Map.of("savingsPct", "66.70"), null);
 
     @Test
     void accepts_null_items_and_returns_emptyList() {

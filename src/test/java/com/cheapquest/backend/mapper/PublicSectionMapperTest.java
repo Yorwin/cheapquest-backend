@@ -28,7 +28,7 @@ class PublicSectionMapperTest {
             new BigDecimal("66.70"), "https://example.com/deal", null);
     private static final SectionItem ITEM = new SectionItem(
             "slug", "Title", OFFER, new BigDecimal("66.70"),
-            Map.of("savingsPct", "66.70"));
+            Map.of("savingsPct", "66.70"), null);
 
     private final PublicSectionMapper mapper = new PublicSectionMapper();
 
@@ -122,5 +122,23 @@ class PublicSectionMapperTest {
                         5, 1, 100L, null));
         SectionsResponseDto dto = mapper.toAdminResponse(reports, 100L);
         assertThat(dto.status()).isEqualTo("completed");
+    }
+
+    @Test
+    void toPublic_propagates_rawgDetails() {
+        com.cheapquest.backend.domain.rawg.RawgDetails details =
+                com.cheapquest.backend.fixtures.RawgDetailsFixtures.minimalDetails("slug", "Title");
+        SectionItem item = new SectionItem("slug", "Title", OFFER, new BigDecimal("66.70"),
+                Map.of("savingsPct", "66.70"), details);
+        PublicSectionDto dto = mapper.toPublic(new SectionSnapshot(
+                SectionName.MEJORES_PROMOS, DAY, T, 1, List.of(item)));
+        assertThat(dto.items().get(0).rawgDetails()).isSameAs(details);
+    }
+
+    @Test
+    void toPublic_with_null_rawgDetails_keepsItNull() {
+        PublicSectionDto dto = mapper.toPublic(new SectionSnapshot(
+                SectionName.MEJORES_PROMOS, DAY, T, 1, List.of(ITEM)));
+        assertThat(dto.items().get(0).rawgDetails()).isNull();
     }
 }

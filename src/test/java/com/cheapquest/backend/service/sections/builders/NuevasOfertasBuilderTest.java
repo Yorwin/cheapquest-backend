@@ -91,7 +91,7 @@ class NuevasOfertasBuilderTest {
     @Test
     void games_with_null_cheapshark_view_are_filtered_out() {
         BuildResult r = new NuevasOfertasBuilder(8, 2, CLOCK).build(new SectionContext(List.of(
-                new GameView("a", "A", null, null),
+                new GameView("a", "A", null, null, null),
                 newOffer("b", "B", NOW, 100, Map.of("owned", 50), 0, 0, SAVINGS_80))));
         assertThat(r.totalCandidates()).isEqualTo(1);
         assertThat(r.items().get(0).slug()).isEqualTo("b");
@@ -149,7 +149,7 @@ class NuevasOfertasBuilderTest {
     @Test
     void games_with_null_rawg_view_are_filtered_out() {
         BuildResult r = new NuevasOfertasBuilder(8, 2, CLOCK).build(new SectionContext(List.of(
-                new GameView("a", "A", cheapshark(NOW, SAVINGS_80), null),
+                new GameView("a", "A", cheapshark(NOW, SAVINGS_80), null, null),
                 newOffer("b", "B", NOW, 100, Map.of("owned", 50), 0, 0, SAVINGS_80))));
         assertThat(r.totalCandidates()).isEqualTo(1);
         assertThat(r.items().get(0).slug()).isEqualTo("b");
@@ -290,7 +290,7 @@ class NuevasOfertasBuilderTest {
         return new GameView(slug, title,
                 new CheapsharkView(cheapSynced, offer, savings, null, List.of()),
                 new RawgView(null, null, null, ratingsCount, additionsCount,
-                        addedByStatus, null, suggestionsCount));
+                        addedByStatus, null, suggestionsCount), null);
     }
 
     private static GameView newOfferNoFirstSeen(String slug, String title) {
@@ -298,13 +298,13 @@ class NuevasOfertasBuilderTest {
                 BigDecimal.TEN, RETAIL, SAVINGS_80, null, null);
         return new GameView(slug, title,
                 new CheapsharkView(true, offer, SAVINGS_80, null, List.of()),
-                new RawgView(null, null, null, 100, 0, Map.of("owned", 50), null, 0));
+                new RawgView(null, null, null, 100, 0, Map.of("owned", 50), null, 0), null);
     }
 
     private static GameView gameNoBestDeal(String slug, String title) {
         return new GameView(slug, title,
                 new CheapsharkView(true, null, null, null, List.of()),
-                new RawgView(null, null, null, 100, 0, Map.of("owned", 50), null, 0));
+                new RawgView(null, null, null, 100, 0, Map.of("owned", 50), null, 0), null);
     }
 
     private static CheapsharkView cheapshark(Instant firstSeenAt, BigDecimal savings) {

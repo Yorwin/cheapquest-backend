@@ -180,7 +180,8 @@ public final class PopularesBuilder implements SectionBuilder {
                         "owned", intOrZero(status == null ? null : status.get("owned")),
                         "beaten", intOrZero(status == null ? null : status.get("beaten")),
                         "additions", intOrZero(rawg.additionsCount()),
-                        "savingsPct", c.savings().toPlainString()));
+                        "savingsPct", c.savings().toPlainString()),
+                c.game().rawgDetails());
     }
 
     private static String intOrZero(Integer v) {

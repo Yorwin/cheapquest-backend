@@ -36,7 +36,7 @@ class PublicSectionReadEndpointTest {
     private static final SectionSnapshot SNAPSHOT = new SectionSnapshot(
             SectionName.MEJORES_PROMOS, DAY, T, 5,
             List.of(new SectionItem("slug", "Title", OFFER,
-                    new BigDecimal("66.70"), Map.of("savingsPct", "66.70"))));
+                    new BigDecimal("66.70"), Map.of("savingsPct", "66.70"), null)));
 
     private final SectionStore store = mock(SectionStore.class);
     private final PublicSectionMapper mapper = new PublicSectionMapper();

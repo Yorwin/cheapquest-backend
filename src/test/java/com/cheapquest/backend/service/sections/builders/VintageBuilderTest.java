@@ -78,7 +78,7 @@ class VintageBuilderTest {
     @Test
     void games_with_null_rawg_view_are_filtered_out() {
         BuildResult r = new VintageBuilder(5, CLOCK).build(new SectionContext(List.of(
-                new GameView("a", "A", null, null),
+                new GameView("a", "A", null, null, null),
                 vintageGame("b", "B", "2014-01-01", 90, null))));
         assertThat(r.totalCandidates()).isEqualTo(1);
         assertThat(r.items().get(0).slug()).isEqualTo("b");
@@ -131,7 +131,7 @@ class VintageBuilderTest {
         BuildResult r = new VintageBuilder(5, CLOCK).build(new SectionContext(List.of(
                 new GameView("a", "A", null,
                         new RawgView("2014-01-01", 90, null,
-                                null, null, null, null, null)),
+                                null, null, null, null, null), null),
                 vintageGame("b", "B", "2014-01-01", 90, null))));
         assertThat(r.totalCandidates()).isEqualTo(1);
         assertThat(r.items().get(0).slug()).isEqualTo("b");
@@ -253,13 +253,13 @@ class VintageBuilderTest {
         return new GameView(slug, title,
                 new CheapsharkView(cheapSynced, best, null, null, List.of()),
                 new RawgView(released, metacritic, rating,
-                        null, null, null, null, null));
+                        null, null, null, null, null), null);
     }
 
     private static GameView vintageGameNullBestDeal(String slug, String title) {
         return new GameView(slug, title,
                 new CheapsharkView(true, null, null, null, List.of()),
                 new RawgView("2014-01-01", 90, null,
-                        null, null, null, null, null));
+                        null, null, null, null, null), null);
     }
 }

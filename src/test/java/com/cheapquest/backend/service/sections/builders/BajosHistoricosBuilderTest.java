@@ -64,7 +64,7 @@ class BajosHistoricosBuilderTest {
     @Test
     void games_with_null_cheapshark_view_are_filtered_out() {
         BuildResult r = new BajosHistoricosBuilder(5).build(new SectionContext(List.of(
-                new GameView("a", "A", null, null),
+                new GameView("a", "A", null, null, null),
                 gameAtLow("b", "B", LOW, LOW, 100))));
         assertThat(r.totalCandidates()).isEqualTo(1);
         assertThat(r.items().get(0).slug()).isEqualTo("b");
@@ -141,7 +141,7 @@ class BajosHistoricosBuilderTest {
         BuildResult r = new BajosHistoricosBuilder(5).build(new SectionContext(List.of(
                 new GameView("a", "A",
                         new CheapsharkView(true, offerAt(LOW), LOW, null, List.of()),
-                        null),
+                        null, null),
                 gameAtLow("b", "B", LOW, LOW, 100))));
         assertThat(r.totalCandidates()).isEqualTo(1);
         assertThat(r.items().get(0).slug()).isEqualTo("b");
@@ -239,31 +239,31 @@ class BajosHistoricosBuilderTest {
             BigDecimal cheapestEver, BigDecimal bestPrice, int ratingsCount) {
         return new GameView(slug, title,
                 new CheapsharkView(true, offerAt(bestPrice), cheapestEver, null, List.of()),
-                new RawgView(null, null, null, ratingsCount, null, null, null, null));
+                new RawgView(null, null, null, ratingsCount, null, null, null, null), null);
     }
 
     private static GameView gameUnsynced(String slug, String title) {
         return new GameView(slug, title,
                 new CheapsharkView(false, offerAt(LOW), LOW, null, List.of()),
-                rawgWith(100));
+                rawgWith(100), null);
     }
 
     private static GameView gameNoBestDeal(String slug, String title) {
         return new GameView(slug, title,
                 new CheapsharkView(true, null, LOW, null, List.of()),
-                rawgWith(100));
+                rawgWith(100), null);
     }
 
     private static GameView gameNoCheapestEver(String slug, String title) {
         return new GameView(slug, title,
                 new CheapsharkView(true, offerAt(LOW), null, null, List.of()),
-                rawgWith(100));
+                rawgWith(100), null);
     }
 
     private static GameView gameNoRatingsCount(String slug, String title) {
         return new GameView(slug, title,
                 new CheapsharkView(true, offerAt(LOW), LOW, null, List.of()),
-                new RawgView(null, null, null, null, null, null, null, null));
+                new RawgView(null, null, null, null, null, null, null, null), null);
     }
 
     private static Offer offerAt(BigDecimal price) {

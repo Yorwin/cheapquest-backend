@@ -66,7 +66,7 @@ class PopularesBuilderTest {
     @Test
     void games_with_null_cheapshark_view_are_filtered_out() {
         BuildResult r = new PopularesBuilder(11).build(new SectionContext(List.of(
-                new GameView("a", "A", null, null),
+                new GameView("a", "A", null, null, null),
                 popularGame("b", "B", 100, Map.of("owned", 50), 0, 0, SAVINGS_80))));
         assertThat(r.totalCandidates()).isEqualTo(1);
         assertThat(r.items().get(0).slug()).isEqualTo("b");
@@ -114,7 +114,7 @@ class PopularesBuilderTest {
     @Test
     void games_with_null_rawg_view_are_filtered_out() {
         BuildResult r = new PopularesBuilder(11).build(new SectionContext(List.of(
-                new GameView("a", "A", cheapshark(SAVINGS_80), null),
+                new GameView("a", "A", cheapshark(SAVINGS_80), null, null),
                 popularGame("b", "B", 100, Map.of("owned", 50), 0, 0, SAVINGS_80))));
         assertThat(r.totalCandidates()).isEqualTo(1);
         assertThat(r.items().get(0).slug()).isEqualTo("b");
@@ -286,14 +286,14 @@ class PopularesBuilderTest {
         return new GameView(slug, title,
                 new CheapsharkView(cheapSynced, offer, savings, null, List.of()),
                 new RawgView(null, null, null, ratingsCount, additionsCount,
-                        addedByStatus, null, suggestionsCount));
+                        addedByStatus, null, suggestionsCount), null);
     }
 
     private static GameView gameNoBestDeal(String slug, String title) {
         return new GameView(slug, title,
                 new CheapsharkView(true, null, null, null, List.of()),
                 new RawgView(null, null, null, 100, 0,
-                        Map.of("owned", 50), null, 0));
+                        Map.of("owned", 50), null, 0), null);
     }
 
     private static CheapsharkView cheapshark(BigDecimal savings) {

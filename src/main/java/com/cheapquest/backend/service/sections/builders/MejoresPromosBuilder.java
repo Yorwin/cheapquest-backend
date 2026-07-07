@@ -93,6 +93,7 @@ public final class MejoresPromosBuilder implements SectionBuilder {
                 g.title(),
                 best,
                 savings,
-                Map.of("savingsPct", savings.toPlainString()));
+                Map.of("savingsPct", savings.toPlainString()),
+                g.rawgDetails());
     }
 }

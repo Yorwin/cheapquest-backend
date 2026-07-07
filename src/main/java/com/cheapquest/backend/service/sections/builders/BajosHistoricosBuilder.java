@@ -141,7 +141,8 @@ public final class BajosHistoricosBuilder implements SectionBuilder {
                 Map.of(
                         "cheapestEver", low.toPlainString(),
                         "currentPrice", best.price().toPlainString(),
-                        "markupPct", MARKUP_PCT_AT_LOW.toPlainString()));
+                        "markupPct", MARKUP_PCT_AT_LOW.toPlainString()),
+                c.game().rawgDetails());
     }
 
     private record Candidate(GameView game, BigDecimal score) {

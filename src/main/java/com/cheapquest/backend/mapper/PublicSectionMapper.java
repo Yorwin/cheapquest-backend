@@ -87,6 +87,7 @@ public final class PublicSectionMapper {
                 i.title(),
                 OfferConverter.toDto(i.bestDeal()),
                 i.score(),
-                i.extra());
+                i.extra(),
+                i.rawgDetails());
     }
 }

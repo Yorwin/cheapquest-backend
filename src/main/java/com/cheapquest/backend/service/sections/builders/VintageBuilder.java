@@ -167,7 +167,8 @@ public final class VintageBuilder implements SectionBuilder {
                 c.game().title(),
                 c.game().cheapshark().bestDeal(),
                 c.score(),
-                Map.of("year", year, scoreKey, scoreValue));
+                Map.of("year", year, scoreKey, scoreValue),
+                c.game().rawgDetails());
     }
 
     private record Candidate(GameView game, LocalDate released, BigDecimal score) {

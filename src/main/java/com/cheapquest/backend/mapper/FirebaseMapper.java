@@ -59,15 +59,41 @@ public final class FirebaseMapper {
     /**
      * Canonical {@link Gson} instance used by the external-API
      * clients (CheapShark, RAWG). HTML escaping is disabled so
-     * URLs and HTML fragments are preserved verbatim. The
-     * Firestore mapper does not use this {@link Gson} directly
-     * anymore: DTOs are produced by record constructors and
+     * URLs and HTML fragments are preserved verbatim. An
+     * {@code Instant} type adapter is registered so domain
+     * records that carry a {@link java.time.Instant} (e.g.
+     * {@code RawgDetails.fetchedAt}, which is exposed on
+     * every {@code SectionItem.rawgDetails}) serialise to and
+     * from ISO-8601 strings instead of triggering a
+     * reflective-access failure on Java 17+. The Firestore
+     * mapper does not use this {@link Gson} directly anymore:
+     * DTOs are produced by record constructors and
      * deserialised by the Firestore SDK's own GSON-backed
      * {@code toObject}, so the round-trip is fully typed.
      */
     public static Gson newGson() {
         return new GsonBuilder()
                 .disableHtmlEscaping()
+                .registerTypeAdapter(java.time.Instant.class,
+                        new com.google.gson.JsonSerializer<java.time.Instant>() {
+                            @Override
+                            public com.google.gson.JsonElement serialize(
+                                    java.time.Instant src,
+                                    java.lang.reflect.Type typeOfSrc,
+                                    com.google.gson.JsonSerializationContext context) {
+                                return new com.google.gson.JsonPrimitive(src.toString());
+                            }
+                        })
+                .registerTypeAdapter(java.time.Instant.class,
+                        new com.google.gson.JsonDeserializer<java.time.Instant>() {
+                            @Override
+                            public java.time.Instant deserialize(
+                                    com.google.gson.JsonElement json,
+                                    java.lang.reflect.Type typeOfT,
+                                    com.google.gson.JsonDeserializationContext context) {
+                                return java.time.Instant.parse(json.getAsString());
+                            }
+                        })
                 .create();
     }
 

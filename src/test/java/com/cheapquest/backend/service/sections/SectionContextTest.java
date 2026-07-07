@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 
 class SectionContextTest {
 
-    private static final GameView GAME = new GameView("slug", "Title", null, null);
+    private static final GameView GAME = new GameView("slug", "Title", null, null, null);
 
     @Test
     void accepts_null_catalog_and_returns_emptyList() {

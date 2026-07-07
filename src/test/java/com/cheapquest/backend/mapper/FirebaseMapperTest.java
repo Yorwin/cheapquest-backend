@@ -486,6 +486,27 @@ class FirebaseMapperTest {
     }
 
     @Test
+    void toHydrationPatch_threadsPreviousBestIntoCheapsharkBlock() {
+        Offer best = new Offer("1", "Steam", null,
+                new BigDecimal("1.99"), new BigDecimal("9.99"), new BigDecimal("80.080"),
+                "https://deal/1", null);
+        GameDeals deals = new GameDeals("82", "Portal", "Portal", "PORTAL",
+                "https://thumb.jpg", null, 1, best, List.of(), T);
+        AggregatedGame game = new AggregatedGame("Portal", "Portal", "portal", deals, null, T);
+        ValidationReport report = new ValidationReport(
+                ValidationStatus.COMPLETE, EnumSet.noneOf(GameField.class), T, T);
+        OfferDto previousBest = new OfferDto("1", "Steam", null,
+                new BigDecimal("1.99"), new BigDecimal("9.99"), new BigDecimal("80.080"),
+                "https://deal/1",
+                "2026-06-29T10:00:00Z");
+
+        HydrationPatch patch = mapper.toHydrationPatch(game, report, true, true, previousBest);
+
+        assertThat(patch.cheapshark().bestDeal().firstSeenAt())
+                .isEqualTo("2026-06-29T10:00:00Z");
+    }
+
+    @Test
     void toRawgBlock_emits_typed_document_dto() {
         // The data block on Firestore is now a RawgDocumentDto (typed
         // record), not a free-form map. Every field the

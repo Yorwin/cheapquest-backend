@@ -11,6 +11,7 @@ import com.cheapquest.backend.dto.HydrationReport;
 import com.cheapquest.backend.dto.firebase.FailedDoc;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
 import com.cheapquest.backend.dto.firebase.HydrationPatch;
+import com.cheapquest.backend.dto.firebase.OfferDto;
 import com.cheapquest.backend.dto.firebase.PendingDoc;
 import com.cheapquest.backend.dto.firebase.ValidationReportDto;
 import com.cheapquest.backend.mapper.FirebaseMapper;
@@ -366,8 +367,9 @@ public final class GameHydrationService {
         }
 
         ValidationReport composed = composeReport(doc.validationReport(), fresh, decision);
+        OfferDto previousBest = doc.cheapshark() == null ? null : doc.cheapshark().bestDeal();
         HydrationPatch patch = firebaseMapper.toHydrationPatch(
-                merged, composed, decision.refreshDeals(), decision.refreshRawg());
+                merged, composed, decision.refreshDeals(), decision.refreshRawg(), previousBest);
         firebaseClient.update(slug, patch);
         // Mark the english locale as synced now that the english
         // content is fresh. Done as a separate partial update so

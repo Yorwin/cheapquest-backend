@@ -87,9 +87,24 @@ public final class FirebaseMapper {
 
     public HydrationPatch toHydrationPatch(AggregatedGame game, ValidationReport report,
             boolean dealsStale, boolean rawgStale) {
+        return toHydrationPatch(game, report, dealsStale, rawgStale, null);
+    }
+
+    /**
+     * Build the hydration patch and thread {@code previousBest}
+     * into the cheapshark block builder so
+     * {@code bestDeal.firstSeenAt} is preserved or reset to
+     * the mapper's "now" per the identity rule documented on
+     * {@link #toCheapsharkBlock(GameDeals, OfferDto)}. The
+     * {@code previousBest} is ignored when {@code dealsStale}
+     * is false because the cheapshark block is not rewritten
+     * in that case.
+     */
+    public HydrationPatch toHydrationPatch(AggregatedGame game, ValidationReport report,
+            boolean dealsStale, boolean rawgStale, OfferDto previousBest) {
         return new HydrationPatch(
                 game.canonicalName(),
-                dealsStale ? toCheapsharkBlock(game.cheapShark()) : null,
+                dealsStale ? toCheapsharkBlock(game.cheapShark(), previousBest) : null,
                 rawgStale ? toRawgBlock(game.rawg()) : null,
                 toValidationReportDto(report));
     }

@@ -87,7 +87,7 @@ class GameHydrationServiceTest {
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
-        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
 
         HydrationReport report = service.hydrateAll();
 
@@ -115,7 +115,7 @@ class GameHydrationServiceTest {
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
-        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
 
         service.hydrateAll();
 
@@ -154,7 +154,7 @@ class GameHydrationServiceTest {
                 null, rawgNoTrailer, T);
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), rawgAgg));
-        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
 
         HydrationReport report = service.hydrateAll();
 
@@ -198,7 +198,7 @@ class GameHydrationServiceTest {
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, false));
         when(gameLookup.lookupByTitle(eq("Portal"), eq(EnumSet.of(GameLookup.Source.CHEAPSHARK))))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), null));
-        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
 
         HydrationReport report = service.hydrateAll();
 
@@ -222,7 +222,7 @@ class GameHydrationServiceTest {
                 .thenReturn(new RefreshPolicy.RefreshDecision(false, true));
         when(gameLookup.lookupByTitle(eq("Portal"), eq(EnumSet.of(GameLookup.Source.RAWG))))
                 .thenReturn(new GameLookup.GameLookupResult(null, sampleRawgAgg()));
-        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
 
         HydrationReport report = service.hydrateAll();
 
@@ -261,7 +261,7 @@ class GameHydrationServiceTest {
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
-        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
         org.mockito.Mockito.doThrow(new FirebaseUnavailableException("boom"))
                 .when(firebaseClient).update(eq("portal"), any(HydrationPatch.class));
 
@@ -285,7 +285,7 @@ class GameHydrationServiceTest {
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
-        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
         org.mockito.Mockito.doThrow(new DocumentNotFoundException("document missing: portal",
                         new FirebaseUnavailableException("failed updating portal", null)))
                 .when(firebaseClient).update(eq("portal"), any(HydrationPatch.class));
@@ -305,7 +305,7 @@ class GameHydrationServiceTest {
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
-        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
 
         service.hydrateAll();
 
@@ -432,7 +432,7 @@ class GameHydrationServiceTest {
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
         when(gameLookup.lookupByTitle(eq("Half-Life 2"), any()))
                 .thenThrow(new RuntimeException("network blip"));
-        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
 
         HydrationReport report = service.hydrateAll();
 
@@ -461,7 +461,7 @@ class GameHydrationServiceTest {
                 .thenReturn(new GameLookup.GameLookupResult(null, sampleRawgAgg()));
         when(gameLookup.lookupByTitle(eq("Stardew Valley"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
-        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
 
         HydrationReport report = service.hydrateAll();
 
@@ -525,7 +525,7 @@ class GameHydrationServiceTest {
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
-        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
 
         assertThat(service.hydrateOne("portal")).isTrue();
         verify(firebaseClient).update(eq("portal"), any(HydrationPatch.class));
@@ -539,7 +539,7 @@ class GameHydrationServiceTest {
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, false));
         when(gameLookup.lookupByTitle(eq("Portal"), eq(EnumSet.of(GameLookup.Source.CHEAPSHARK))))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), null));
-        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
 
         service.hydrateAll();
 
@@ -556,7 +556,7 @@ class GameHydrationServiceTest {
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), null));
         ArgumentCaptor<ValidationReport> captor = ArgumentCaptor.forClass(ValidationReport.class);
-        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
 
         service.hydrateAll();
 
@@ -575,7 +575,7 @@ class GameHydrationServiceTest {
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
         ArgumentCaptor<ValidationReport> captor = ArgumentCaptor.forClass(ValidationReport.class);
-        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
 
         service.hydrateAll();
 
@@ -593,7 +593,7 @@ class GameHydrationServiceTest {
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
         ArgumentCaptor<ValidationReport> captor = ArgumentCaptor.forClass(ValidationReport.class);
-        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
 
         service.hydrateAll();
 
@@ -620,7 +620,7 @@ class GameHydrationServiceTest {
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), null));
         ArgumentCaptor<ValidationReport> captor = ArgumentCaptor.forClass(ValidationReport.class);
-        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
 
         service.hydrateAll();
 
@@ -649,7 +649,7 @@ class GameHydrationServiceTest {
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), null));
         ArgumentCaptor<ValidationReport> captor = ArgumentCaptor.forClass(ValidationReport.class);
-        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
 
         service.hydrateAll();
 
@@ -678,7 +678,7 @@ class GameHydrationServiceTest {
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(null, sampleRawgAgg()));
         ArgumentCaptor<ValidationReport> captor = ArgumentCaptor.forClass(ValidationReport.class);
-        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
 
         service.hydrateAll();
 
@@ -701,7 +701,7 @@ class GameHydrationServiceTest {
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), null));
         ArgumentCaptor<ValidationReport> captor = ArgumentCaptor.forClass(ValidationReport.class);
-        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
 
         service.hydrateAll();
 
@@ -725,7 +725,7 @@ class GameHydrationServiceTest {
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(emptyDeals(), null));
         ArgumentCaptor<ValidationReport> captor = ArgumentCaptor.forClass(ValidationReport.class);
-        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
 
         service.hydrateAll();
 
@@ -757,7 +757,7 @@ class GameHydrationServiceTest {
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), rawgAgg));
         ArgumentCaptor<ValidationReport> captor = ArgumentCaptor.forClass(ValidationReport.class);
-        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
 
         service.hydrateAll();
 
@@ -783,7 +783,7 @@ class GameHydrationServiceTest {
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
         ArgumentCaptor<ValidationReport> captor = ArgumentCaptor.forClass(ValidationReport.class);
-        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
 
         service.hydrateAll();
 
@@ -806,7 +806,7 @@ class GameHydrationServiceTest {
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), null));
         ArgumentCaptor<ValidationReport> captor = ArgumentCaptor.forClass(ValidationReport.class);
-        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
 
         service.hydrateAll();
 
@@ -828,7 +828,7 @@ class GameHydrationServiceTest {
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
                 .thenReturn(new GameLookup.GameLookupResult(null, sampleRawgAgg()));
         ArgumentCaptor<ValidationReport> captor = ArgumentCaptor.forClass(ValidationReport.class);
-        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class))).thenReturn(samplePatch());
+        when(firebaseMapper.toHydrationPatch(any(), captor.capture(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
 
         service.hydrateAll();
 

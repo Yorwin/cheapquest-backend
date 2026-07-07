@@ -333,11 +333,12 @@ public final class App {
         // (read via FirebaseClient, projected to GameView via
         // GameViewMapper) and the snapshots land under the
         // sections / sections-history collection paths.
-        // MejoresPromosBuilder, VintageBuilder and
-        // BajosHistoricosBuilder are wired for now; the other
-        // two builders (populares, nuevas-ofertas) land in
-        // their own commits and the SectionService will pick
-        // them up automatically through the builders list.
+        // MejoresPromosBuilder, VintageBuilder,
+        // BajosHistoricosBuilder and PopularesBuilder are
+        // wired for now; the last builder (nuevas-ofertas)
+        // is blocked on a 'first seen at' signal that the
+        // pipeline does not produce yet, and lands in its
+        // own commit when that is in place.
         com.cheapquest.backend.mapper.SectionSnapshotMapper sectionSnapshotMapper =
                 new com.cheapquest.backend.mapper.SectionSnapshotMapper();
         com.cheapquest.backend.mapper.GameViewMapper gameViewMapper =
@@ -359,7 +360,9 @@ public final class App {
                                 props.sectionsMaxItems(com.cheapquest.backend.domain.sections.SectionName.VINTAGE),
                                 clock),
                         new com.cheapquest.backend.service.sections.builders.BajosHistoricosBuilder(
-                                props.sectionsMaxItems(com.cheapquest.backend.domain.sections.SectionName.BAJOS_HISTORICOS)));
+                                props.sectionsMaxItems(com.cheapquest.backend.domain.sections.SectionName.BAJOS_HISTORICOS)),
+                        new com.cheapquest.backend.service.sections.builders.PopularesBuilder(
+                                props.sectionsMaxItems(com.cheapquest.backend.domain.sections.SectionName.POPULARES)));
         java.util.function.Supplier<java.util.List<com.cheapquest.backend.domain.sections.GameView>> catalogSupplier =
                 () -> gameViewMapper.toGameViews(firebaseClient.readAll());
         com.cheapquest.backend.service.sections.SectionsService sectionsService =

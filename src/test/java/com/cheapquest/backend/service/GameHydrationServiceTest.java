@@ -24,6 +24,7 @@ import com.cheapquest.backend.dto.firebase.CheapsharkBlock;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
 import com.cheapquest.backend.dto.firebase.HydrationPatch;
 import com.cheapquest.backend.dto.firebase.LocaleBlock;
+import com.cheapquest.backend.dto.firebase.OfferDto;
 import com.cheapquest.backend.dto.firebase.PendingDoc;
 import com.cheapquest.backend.dto.firebase.RawgBlock;
 import com.cheapquest.backend.dto.firebase.ValidationReportDto;
@@ -529,6 +530,46 @@ class GameHydrationServiceTest {
 
         assertThat(service.hydrateOne("portal")).isTrue();
         verify(firebaseClient).update(eq("portal"), any(HydrationPatch.class));
+    }
+
+    @Test
+    void hydrateOne_threads_previousBest_from_existing_doc() {
+        // The hydration path must extract doc.cheapshark().bestDeal()
+        // and pass it as the 5th argument to firebaseMapper.toHydrationPatch
+        // so the mapper can preserve firstSeenAt across hydrations.
+        // Without this wiring the field would reset to "now" on
+        // every refresh and the "nuevas ofertas" section would
+        // re-surface the same deal every day.
+        String slug = "portal";
+        OfferDto previousBest = new OfferDto("1", "Steam", null,
+                new BigDecimal("1.99"), new BigDecimal("9.99"), new BigDecimal("80.080"),
+                "https://deal/1", "2026-06-29T10:00:00Z");
+        GameDocumentDto doc = new GameDocumentDto(
+                "Portal", slug, "en", true, "2026-01-01T00:00:00Z",
+                new CheapsharkBlock(true, "82", new BigDecimal("0.99"),
+                        previousBest, 1, List.of(), "2026-06-30T10:00:00Z"),
+                new RawgBlock(false, null, null),
+                Map.of(
+                        "es", LocaleBlock.unsynced(),
+                        "en", LocaleBlock.unsynced(),
+                        "fr", LocaleBlock.unsynced()),
+                new ValidationReportDto("COMPLETE", List.of(),
+                        "2026-06-30T10:00:00Z", null));
+        when(firebaseClient.readOne(slug)).thenReturn(Optional.of(doc));
+        when(refreshPolicy.decide(any(), anyBoolean()))
+                .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
+        when(gameLookup.lookupByTitle(eq("Portal"), any()))
+                .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
+        ArgumentCaptor<OfferDto> previousBestCaptor = ArgumentCaptor.forClass(OfferDto.class);
+        when(firebaseMapper.toHydrationPatch(
+                any(), any(), any(Boolean.class), any(Boolean.class), previousBestCaptor.capture()))
+                .thenReturn(samplePatch());
+
+        service.hydrateOne(slug);
+
+        assertThat(previousBestCaptor.getValue().storeId()).isEqualTo("1");
+        assertThat(previousBestCaptor.getValue().firstSeenAt())
+                .isEqualTo("2026-06-29T10:00:00Z");
     }
 
     @Test

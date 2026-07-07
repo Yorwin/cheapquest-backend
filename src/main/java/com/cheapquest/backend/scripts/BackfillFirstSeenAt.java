@@ -11,7 +11,6 @@ import com.google.cloud.firestore.Query;
 import com.google.cloud.firestore.QueryDocumentSnapshot;
 import com.google.cloud.firestore.QuerySnapshot;
 import com.google.cloud.firestore.WriteResult;
-import com.google.firebase.FirebaseApp;
 import com.google.firebase.cloud.FirestoreClient;
 import java.util.HashMap;
 import java.util.List;
@@ -77,6 +76,7 @@ public final class BackfillFirstSeenAt {
     private static final Logger log = LoggerFactory.getLogger(BackfillFirstSeenAt.class);
 
     private static final int PAGE_SIZE = 300;
+    private static final String EPOCH_FALLBACK = "1970-01-01T00:00:00Z";
 
     private BackfillFirstSeenAt() {
     }
@@ -110,10 +110,7 @@ public final class BackfillFirstSeenAt {
             }
             DocumentSnapshot last = docs.get(docs.size() - 1);
             for (QueryDocumentSnapshot doc : docs) {
-                summary.scanned++;
-                if (!backfillOne(firestore.collection(gamesPath).document(doc.getId()), doc)) {
-                    summary.failed++;
-                }
+                backfillOne(firestore.collection(gamesPath).document(doc.getId()), doc, summary);
             }
             if (docs.size() < PAGE_SIZE) {
                 break;
@@ -122,32 +119,30 @@ public final class BackfillFirstSeenAt {
                     .startAfter(last)
                     .limit(PAGE_SIZE);
         }
-        log.info("backfill_done scanned={} updated={} skipped_already_set={} failed={}",
+        log.info("backfill_done scanned={} updated={} skipped={} failed={}",
                 summary.scanned, summary.updated, summary.skipped, summary.failed);
     }
 
-    /**
-     * Backfill a single document. Returns {@code true} on
-     * success (whether or not an update was needed), so the
-     * caller can keep a per-doc failure counter without
-     * conflating "did nothing" with "error".
-     */
-    private static boolean backfillOne(DocumentReference ref, DocumentSnapshot doc) {
+    private static void backfillOne(DocumentReference ref, DocumentSnapshot doc, Summary summary) {
+        summary.scanned++;
         Map<String, Object> cheapshark = readMap(doc, "cheapshark");
         if (cheapshark == null) {
             log.debug("backfill_skip slug={} reason=no_cheapshark", doc.getId());
-            return true;
+            return;
         }
         Object bestObj = cheapshark.get("bestDeal");
         if (!(bestObj instanceof Map<?, ?> best)) {
             log.debug("backfill_skip slug={} reason=no_best_deal", doc.getId());
-            return true;
+            return;
         }
         if (best.get("firstSeenAt") != null) {
             log.debug("backfill_skip slug={} reason=already_set", doc.getId());
-            return true;
+            summary.skipped++;
+            return;
         }
-        String firstSeen = pickFirstSeen(doc, cheapshark);
+        String firstSeen = pickFirstSeen(
+                asString(cheapshark.get("fetchedAt")),
+                asString(doc.get("addedAt")));
         try {
             Map<String, Object> update = new HashMap<>();
             update.put(FieldPath.of("cheapshark", "bestDeal", "firstSeenAt").toString(), firstSeen);
@@ -155,24 +150,38 @@ public final class BackfillFirstSeenAt {
             WriteResult result = future.get();
             log.info("backfill_update slug={} firstSeenAt={} updateTime={}",
                     doc.getId(), firstSeen, result.getUpdateTime());
-            return true;
+            summary.updated++;
         } catch (Exception e) {
             log.warn("backfill_doc_failed slug={} error={}: {}",
                     doc.getId(), e.getClass().getSimpleName(), e.getMessage());
-            return false;
+            summary.failed++;
         }
     }
 
-    private static String pickFirstSeen(DocumentSnapshot doc, Map<String, Object> cheapshark) {
-        Object fetched = cheapshark.get("fetchedAt");
-        if (fetched instanceof String s && !s.isBlank()) {
-            return s;
+    /**
+     * Pure helper: pick the timestamp to use as
+     * {@code firstSeenAt} for the backfilled doc. Prefers
+     * {@code cheapshark.fetchedAt} (the most recent time
+     * we observed the current best deal) and falls back to
+     * {@code addedAt} (when the game entered the catalog).
+     * Returns a 1970 epoch string as a last-resort default
+     * so a null never makes it into the field; a game
+     * with that value is older than any "nuevas ofertas"
+     * window and is effectively excluded from the section
+     * until a real hydration sets a non-null timestamp.
+     */
+    static String pickFirstSeen(String fetchedAt, String addedAt) {
+        if (fetchedAt != null && !fetchedAt.isBlank()) {
+            return fetchedAt;
         }
-        Object added = doc.get("addedAt");
-        if (added instanceof String s && !s.isBlank()) {
-            return s;
+        if (addedAt != null && !addedAt.isBlank()) {
+            return addedAt;
         }
-        return "1970-01-01T00:00:00Z";
+        return EPOCH_FALLBACK;
+    }
+
+    private static String asString(Object o) {
+        return o instanceof String s ? s : null;
     }
 
     @SuppressWarnings("unchecked")

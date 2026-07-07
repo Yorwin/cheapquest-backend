@@ -31,8 +31,8 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li>{@code rawg} non-null with a parseable
  *       {@code released} date, and that date is at least
- *       {@value #MIN_AGE_YEARS} whole years before "today"
- *       (per the injected {@link Clock}).</li>
+ *       eight whole years before "today" (per the
+ *       injected {@link Clock}).</li>
  *   <li>At least one quality signal: a non-null
  *       {@code metacritic} or a non-null {@code rating}.
  *       Games without either are excluded because the data
@@ -70,7 +70,7 @@ public final class VintageBuilder implements SectionBuilder {
      * truth; lift to a property only if a future use case
      * needs to tune it without a deploy.
      */
-    public static final int MIN_AGE_YEARS = 8;
+    private static final int MIN_AGE_YEARS = 8;
 
     private static final Logger log = LoggerFactory.getLogger(VintageBuilder.class);
 

@@ -172,9 +172,6 @@ public final class FirebaseMapper {
         } else {
             firstSeen = Instant.now(clock);
         }
-        if (firstSeen.toString().equals(fresh.firstSeenAt())) {
-            return fresh;
-        }
         return new OfferDto(
                 fresh.storeId(), fresh.storeName(), fresh.storeIconUrl(),
                 fresh.price(), fresh.retailPrice(), fresh.savings(), fresh.dealUrl(),

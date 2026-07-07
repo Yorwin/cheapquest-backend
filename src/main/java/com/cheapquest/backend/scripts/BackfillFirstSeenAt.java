@@ -127,16 +127,18 @@ public final class BackfillFirstSeenAt {
         summary.scanned++;
         Map<String, Object> cheapshark = readMap(doc, "cheapshark");
         if (cheapshark == null) {
-            log.debug("backfill_skip slug={} reason=no_cheapshark", doc.getId());
+            log.info("backfill_skip slug={} reason=no_cheapshark", doc.getId());
+            summary.skipped++;
             return;
         }
         Object bestObj = cheapshark.get("bestDeal");
         if (!(bestObj instanceof Map<?, ?> best)) {
-            log.debug("backfill_skip slug={} reason=no_best_deal", doc.getId());
+            log.info("backfill_skip slug={} reason=no_best_deal", doc.getId());
+            summary.skipped++;
             return;
         }
         if (best.get("firstSeenAt") != null) {
-            log.debug("backfill_skip slug={} reason=already_set", doc.getId());
+            log.info("backfill_skip slug={} reason=already_set", doc.getId());
             summary.skipped++;
             return;
         }

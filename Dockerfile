@@ -1,10 +1,12 @@
 # syntax=docker/dockerfile:1.7
 #
 # Multi-stage build for backend-cheapquest. The build stage
-# uses a JDK image to run Maven; the runtime stage uses a
-# slim JRE image and only carries the shaded JAR. The final
-# image is ~200 MB on top of eclipse-temurin:17-jre (which
-# is itself ~230 MB).
+# uses the official Maven image (JDK 17 + Maven 3.9.x
+# pre-installed); the runtime stage uses a slim JRE image
+# and only carries the shaded JAR. The final image is
+# ~200 MB on top of eclipse-temurin:17-jre (which is itself
+# ~230 MB). The Maven image is only used in the build stage
+# and is discarded, so it does not bloat the final image.
 #
 # Build:
 #   docker build -t backend-cheapquest:latest .
@@ -14,23 +16,38 @@
 #     -e FIREBASE_PROJECT_ID=cheapquest-database \
 #     -v $PWD/firebase-credentials.json:/var/secrets/firebase/credentials.json:ro \
 #     backend-cheapquest:latest
+#
+# Why maven:3.9-eclipse-temurin-17 and not eclipse-temurin:17-jdk:
+# the project uses Maven from the host system
+# (apache-maven-3.9.15-bin on the dev machine); the host
+# install is not visible inside a Docker build container,
+# and a previous revision of this Dockerfile tried to
+# support a Maven Wrapper that the project does not ship
+# (the COPY of .mvn / mvnw would hard-fail). The
+# maven:3.9-eclipse-temurin-17 image is the official Docker
+# community image that ships both Eclipse Temurin JDK 17
+# and Maven 3.9.x in /usr/bin, so 'mvn' is always on PATH
+# inside the build container and the dependency layer is
+# correctly cached by BuildKit across rebuilds.
 
 # ---------- Build stage ----------
-FROM eclipse-temurin:17-jdk AS build
+FROM maven:3.9-eclipse-temurin-17 AS build
 WORKDIR /src
 
 # Cache the dependency graph first. As long as pom.xml is
 # unchanged, this layer is reused and the build skips
-# downloading the world on every code change.
+# downloading the world on every code change. The
+# --mount=type=cache,target=/root/.m2 directive requires
+# BuildKit (DOCKER_BUILDKIT=1 in cloudbuild.yaml); without
+# it the directive is silently ignored and each build
+# downloads the full dependency graph again.
 COPY pom.xml ./
-COPY .mvn .mvn 2>/dev/null || true
-COPY mvnw mvnw 2>/dev/null || true
 RUN --mount=type=cache,target=/root/.m2 \
-    sh -c 'if [ -x ./mvnw ]; then ./mvnw -B -ntp -DskipTests dependency:go-offline; else mvn -B -ntp -DskipTests dependency:go-offline; fi'
+    mvn -B -ntp -DskipTests dependency:go-offline
 
 COPY src ./src
 RUN --mount=type=cache,target=/root/.m2 \
-    sh -c 'if [ -x ./mvnw ]; then ./mvnw -B -ntp -DskipTests package; else mvn -B -ntp -DskipTests package; fi'
+    mvn -B -ntp -DskipTests package
 
 # ---------- Runtime stage ----------
 FROM eclipse-temurin:17-jre

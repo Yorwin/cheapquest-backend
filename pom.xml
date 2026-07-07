@@ -159,6 +159,27 @@
                                         <exclude>META-INF/*.SF</exclude>
                                         <exclude>META-INF/*.DSA</exclude>
                                         <exclude>META-INF/*.RSA</exclude>
+                                        <!-- Flatten the shaded JAR: drop the
+                                             META-INF/versions/ tree that
+                                             transitive deps (otel, slf4j,
+                                             logback) ship as multi-release
+                                             content. When a shaded JAR is
+                                             detected as multi-release, the
+                                             JVM uses a special classloader
+                                             that prevents LoggingEvent
+                                             (ch.qos.logback.classic.spi) from
+                                             finding its sibling
+                                             ThrowableProxy in the same
+                                             package, breaking every log.error
+                                             call on the http-handler thread
+                                             with NoClassDefFoundError. The
+                                             version-specific classes are
+                                             just runtime optimizations (otel's
+                                             Java9VersionSpecific, logback's
+                                             21/ classes); their absence is
+                                             harmless because the base
+                                             classes fall back. -->
+                                        <exclude>META-INF/versions/**</exclude>
                                     </excludes>
                                 </filter>
                             </filters>

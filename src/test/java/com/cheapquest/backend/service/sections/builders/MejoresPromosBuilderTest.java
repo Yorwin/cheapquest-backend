@@ -141,7 +141,7 @@ class MejoresPromosBuilderTest {
             BigDecimal savings, boolean synced, boolean withBestDeal) {
         Offer best = withBestDeal
                 ? new Offer("1", "Steam", null,
-                        BigDecimal.TEN, BigDecimal.valueOf(20), savings, null)
+                        BigDecimal.TEN, BigDecimal.valueOf(20), savings, null, null)
                 : null;
         return new GameView(slug, title,
                 new CheapsharkView(synced, best, null, null, List.of()),

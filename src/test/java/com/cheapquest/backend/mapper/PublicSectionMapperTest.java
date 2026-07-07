@@ -25,7 +25,7 @@ class PublicSectionMapperTest {
     private static final Offer OFFER = new Offer(
             "1", "Steam", "https://example.com/steam.png",
             new BigDecimal("9.99"), new BigDecimal("29.99"),
-            new BigDecimal("66.70"), "https://example.com/deal");
+            new BigDecimal("66.70"), "https://example.com/deal", null);
     private static final SectionItem ITEM = new SectionItem(
             "slug", "Title", OFFER, new BigDecimal("66.70"),
             Map.of("savingsPct", "66.70"));

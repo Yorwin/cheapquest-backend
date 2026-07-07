@@ -122,10 +122,10 @@ class FirebaseMapperTest {
     void toCheapsharkBlock_mapsDealsFields() {
         Offer best = new Offer("1", "Steam", "https://steam.png",
                 new BigDecimal("1.99"), new BigDecimal("9.99"), new BigDecimal("80.080"),
-                "https://deal/1");
+                "https://deal/1", null);
         Offer other = new Offer("7", "GOG", null,
                 new BigDecimal("2.50"), new BigDecimal("9.99"), new BigDecimal("74.977"),
-                "https://deal/2");
+                "https://deal/2", null);
         GameDeals deals = new GameDeals("82", "Portal", "Portal", "PORTAL",
                 "https://thumb.jpg", new BigDecimal("0.99"), 2, best, List.of(other), T);
 
@@ -137,7 +137,7 @@ class FirebaseMapperTest {
         assertThat(block.offerCount()).isEqualTo(2);
         assertThat(block.bestDeal()).isEqualTo(new OfferDto("1", "Steam", "https://steam.png",
                 new BigDecimal("1.99"), new BigDecimal("9.99"), new BigDecimal("80.080"),
-                "https://deal/1"));
+                "https://deal/1", null));
         assertThat(block.deals()).hasSize(1);
         assertThat(block.deals().get(0).storeId()).isEqualTo("7");
     }
@@ -403,7 +403,7 @@ class FirebaseMapperTest {
                 1,
                 new Offer("1", "Steam", null,
                         new BigDecimal("1.99"), new BigDecimal("9.99"),
-                        new BigDecimal("80.080"), "https://example.com/deal"),
+                        new BigDecimal("80.080"), "https://example.com/deal", null),
                 List.of(),
                 T);
     }

@@ -267,7 +267,7 @@ class BajosHistoricosBuilderTest {
     }
 
     private static Offer offerAt(BigDecimal price) {
-        return new Offer("1", "Steam", null, price, RETAIL, new BigDecimal("50"), null);
+        return new Offer("1", "Steam", null, price, RETAIL, new BigDecimal("50"), null, null);
     }
 
     private static RawgView rawgWith(int ratingsCount) {

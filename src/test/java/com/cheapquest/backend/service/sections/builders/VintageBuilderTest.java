@@ -28,7 +28,7 @@ class VintageBuilderTest {
     private static final Offer BEST_DEAL = new Offer(
             "1", "Steam", null,
             BigDecimal.TEN, BigDecimal.valueOf(20),
-            BigDecimal.valueOf(50), null);
+            BigDecimal.valueOf(50), null, null);
 
     // -------- construction / contract ---------------------------------------
 

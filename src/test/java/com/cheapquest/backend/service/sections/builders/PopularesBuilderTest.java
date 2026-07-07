@@ -282,7 +282,7 @@ class PopularesBuilderTest {
             Integer additionsCount, Integer suggestionsCount,
             BigDecimal savings, boolean cheapSynced) {
         Offer offer = new Offer("1", "Steam", null,
-                BigDecimal.TEN, RETAIL, savings, null);
+                BigDecimal.TEN, RETAIL, savings, null, null);
         return new GameView(slug, title,
                 new CheapsharkView(cheapSynced, offer, savings, null, List.of()),
                 new RawgView(null, null, null, ratingsCount, additionsCount,
@@ -297,7 +297,7 @@ class PopularesBuilderTest {
     }
 
     private static CheapsharkView cheapshark(BigDecimal savings) {
-        Offer offer = new Offer("1", "Steam", null, BigDecimal.TEN, RETAIL, savings, null);
+        Offer offer = new Offer("1", "Steam", null, BigDecimal.TEN, RETAIL, savings, null, null);
         return new CheapsharkView(true, offer, savings, null, List.of());
     }
 }

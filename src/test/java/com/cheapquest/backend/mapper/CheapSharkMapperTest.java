@@ -75,9 +75,9 @@ class CheapSharkMapperTest {
 
     @Test
     void pickBestOffer_returnsHighestSavings() {
-        Offer a = new Offer("1", "S1", null, bd("5"), bd("10"), bd("20.0"), null);
-        Offer b = new Offer("2", "S2", null, bd("3"), bd("10"), bd("70.0"), null);
-        Offer c = new Offer("3", "S3", null, bd("1"), bd("10"), bd("90.0"), null);
+        Offer a = new Offer("1", "S1", null, bd("5"), bd("10"), bd("20.0"), null, null);
+        Offer b = new Offer("2", "S2", null, bd("3"), bd("10"), bd("70.0"), null, null);
+        Offer c = new Offer("3", "S3", null, bd("1"), bd("10"), bd("90.0"), null, null);
 
         Optional<Offer> best = mapper.pickBestOffer(List.of(a, b, c));
 

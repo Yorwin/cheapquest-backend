@@ -2,6 +2,8 @@ package com.cheapquest.backend.mapper;
 
 import com.cheapquest.backend.domain.Offer;
 import com.cheapquest.backend.dto.firebase.OfferDto;
+import com.cheapquest.backend.util.InstantUtils;
+import java.time.Instant;
 
 /**
  * Single source of truth for the
@@ -10,7 +12,7 @@ import com.cheapquest.backend.dto.firebase.OfferDto;
  * so the conversion is mechanical, but the alternative
  * (duplicating the field copy in every mapper that needs it)
  * is fragile: a future field on {@code Offer} (e.g.
- * {@code lastSeenAt} for the "nuevas ofertas" section) would
+ * {@code firstSeenAt} for the "nuevas ofertas" section) would
  * silently drop the new field on any mapper that forgets to
  * update.
  *
@@ -29,14 +31,17 @@ public final class OfferConverter {
     }
 
     public static OfferDto toDto(Offer o) {
+        Instant firstSeen = o.firstSeenAt();
         return new OfferDto(
                 o.storeId(), o.storeName(), o.storeIconUrl(),
-                o.price(), o.retailPrice(), o.savings(), o.dealUrl());
+                o.price(), o.retailPrice(), o.savings(), o.dealUrl(),
+                firstSeen == null ? null : firstSeen.toString());
     }
 
     public static Offer toDomain(OfferDto d) {
         return new Offer(
                 d.storeId(), d.storeName(), d.storeIconUrl(),
-                d.price(), d.retailPrice(), d.savings(), d.dealUrl());
+                d.price(), d.retailPrice(), d.savings(), d.dealUrl(),
+                InstantUtils.parseOrNull(d.firstSeenAt()));
     }
 }

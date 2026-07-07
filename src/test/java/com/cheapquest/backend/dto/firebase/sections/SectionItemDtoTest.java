@@ -14,7 +14,7 @@ class SectionItemDtoTest {
     private static final OfferDto OFFER = new OfferDto(
             "1", "Steam", "https://example.com/steam.png",
             new BigDecimal("9.99"), new BigDecimal("29.99"),
-            new BigDecimal("66.70"), "https://example.com/deal");
+            new BigDecimal("66.70"), "https://example.com/deal", null);
 
     @Test
     void rejects_null_slug() {

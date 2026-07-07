@@ -16,7 +16,7 @@ class BuildResultTest {
             "slug", "Title",
             new Offer("1", "Steam", null,
                     new BigDecimal("9.99"), new BigDecimal("29.99"),
-                    new BigDecimal("66.70"), null),
+                    new BigDecimal("66.70"), null, null),
             new BigDecimal("66.70"),
             Map.of("savingsPct", "66.70"));
 

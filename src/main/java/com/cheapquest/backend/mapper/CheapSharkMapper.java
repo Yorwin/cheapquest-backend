@@ -51,7 +51,8 @@ public final class CheapSharkMapper {
                 toBigDecimal(deal.price()),
                 toBigDecimal(deal.retailPrice()),
                 toBigDecimal(deal.savings()),
-                buildDealUrl(deal.dealId()));
+                buildDealUrl(deal.dealId()),
+                null);
     }
 
     public Optional<Offer> pickBestOffer(List<Offer> offers) {

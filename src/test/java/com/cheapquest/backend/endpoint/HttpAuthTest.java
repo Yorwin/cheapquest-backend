@@ -119,4 +119,69 @@ class HttpAuthTest {
         }
         throw new AssertionError("expected UnauthorizedException");
     }
+
+    // --- X-Admin-Token header tests ---
+
+    @Test
+    void accepts_xAdminToken_when_matches() {
+        Headers headers = new Headers();
+        headers.add("X-Admin-Token", "my-secret");
+        String returned = HttpAuth.requireBearer(headers, "my-secret");
+        assertThat(returned).isEqualTo("my-secret");
+    }
+
+    @Test
+    void xAdminToken_takes_priority_over_authorization() {
+        // X-Admin-Token matches, Authorization has wrong token
+        Headers headers = new Headers();
+        headers.add("Authorization", "Bearer wrong-token");
+        headers.add("X-Admin-Token", "correct-token");
+        String returned = HttpAuth.requireBearer(headers, "correct-token");
+        assertThat(returned).isEqualTo("correct-token");
+    }
+
+    @Test
+    void rejects_when_xAdminToken_mismatches() {
+        Headers headers = new Headers();
+        headers.add("X-Admin-Token", "wrong");
+        try {
+            HttpAuth.requireBearer(headers, "expected-token");
+        } catch (Exception e) {
+            assertThat(e).isInstanceOf(com.cheapquest.backend.exception.UnauthorizedException.class);
+            assertThat(e.getMessage()).contains("invalid admin token");
+            return;
+        }
+        throw new AssertionError("expected UnauthorizedException");
+    }
+
+    @Test
+    void ignores_empty_xAdminToken_and_fallsBack() {
+        Headers headers = new Headers();
+        headers.add("X-Admin-Token", "");
+        headers.add("Authorization", "Bearer fallback-token");
+        String returned = HttpAuth.requireBearer(headers, "fallback-token");
+        assertThat(returned).isEqualTo("fallback-token");
+    }
+
+    @Test
+    void ignores_blank_xAdminToken_and_fallsBack() {
+        Headers headers = new Headers();
+        headers.add("X-Admin-Token", "   ");
+        headers.add("Authorization", "Bearer blank-xadmin-fallback");
+        String returned = HttpAuth.requireBearer(headers, "blank-xadmin-fallback");
+        assertThat(returned).isEqualTo("blank-xadmin-fallback");
+    }
+
+    @Test
+    void xAdminToken_rejects_when_differs_only_by_length() {
+        Headers headers = new Headers();
+        headers.add("X-Admin-Token", "short");
+        try {
+            HttpAuth.requireBearer(headers, "a-much-longer-token");
+        } catch (Exception e) {
+            assertThat(e).isInstanceOf(com.cheapquest.backend.exception.UnauthorizedException.class);
+            return;
+        }
+        throw new AssertionError("expected UnauthorizedException");
+    }
 }

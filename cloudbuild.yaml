@@ -20,15 +20,10 @@
 #   PROJECT_ID - auto-resolved by Cloud Build, do not pass
 
 steps:
-  # 1) Build the image with BuildKit so the cache-mount
-  # directives in the Dockerfile are honoured. The
-  # standard gcr.io/cloud-builders/docker image uses the
-  # legacy builder which silently ignores --mount=type=cache
-  # and the # syntax=docker/dockerfile:1.7 directive; we
-  # opt into BuildKit by setting DOCKER_BUILDKIT=1. With
-  # BuildKit active, the /root/.m2 cache persists across
-  # builds so the dependency layer is reused and the
-  # ~5-10 min initial build drops to <2 min on rebuilds.
+  # 1) Build the image. The dependency layer (Maven download)
+  # is cached by Docker's layer cache: as long as pom.xml
+  # is unchanged, the RUN mvn dependency:go-offline step is
+  # reused across builds.
   - id: build
     name: gcr.io/cloud-builders/docker
     args:
@@ -37,8 +32,6 @@ steps:
       - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/backend-cheapquest:latest
       - --cache-from=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/backend-cheapquest:latest
       - .
-    env:
-      - DOCKER_BUILDKIT=1
 
   # 2) Push both tags in one step (latest gets the most
   # recent short SHA on every build).

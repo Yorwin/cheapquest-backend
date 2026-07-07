@@ -1,6 +1,7 @@
 package com.cheapquest.backend.mapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import com.cheapquest.backend.domain.rawg.DeveloperSummary;
 import com.cheapquest.backend.domain.rawg.PublisherSummary;
@@ -212,14 +213,13 @@ class RawgDetailsMapperTest {
 
     @Test
     void toDomain_nullFetchedAt_fallsBackToCurrentInstant() {
-        java.time.Instant before = java.time.Instant.now();
+        java.time.Instant now = java.time.Instant.now();
         RawgDocumentDto dto = newDtoWithAllNulls();
-        java.time.Instant after = java.time.Instant.now();
 
         java.time.Instant result = mapper.toDomain(dto).fetchedAt();
 
         assertThat(result).isNotNull();
-        assertThat(result).isBetween(before, after);
+        assertThat(result).isCloseTo(now, within(5, java.time.temporal.ChronoUnit.SECONDS));
     }
 
     @Test

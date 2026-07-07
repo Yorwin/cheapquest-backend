@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-#
 # Multi-stage build for backend-cheapquest. The build stage
 # uses the official Maven image (JDK 17 + Maven 3.9.x
 # pre-installed); the runtime stage uses a slim JRE image
@@ -27,27 +25,20 @@
 # maven:3.9-eclipse-temurin-17 image is the official Docker
 # community image that ships both Eclipse Temurin JDK 17
 # and Maven 3.9.x in /usr/bin, so 'mvn' is always on PATH
-# inside the build container and the dependency layer is
-# correctly cached by BuildKit across rebuilds.
+# inside the build container.
 
 # ---------- Build stage ----------
 FROM maven:3.9-eclipse-temurin-17 AS build
 WORKDIR /src
 
-# Cache the dependency graph first. As long as pom.xml is
-# unchanged, this layer is reused and the build skips
-# downloading the world on every code change. The
-# --mount=type=cache,target=/root/.m2 directive requires
-# BuildKit (DOCKER_BUILDKIT=1 in cloudbuild.yaml); without
-# it the directive is silently ignored and each build
-# downloads the full dependency graph again.
+# Cache the dependency graph in a separate layer. As long
+# as pom.xml is unchanged, this layer is reused and the
+# build skips downloading the world on every code change.
 COPY pom.xml ./
-RUN --mount=type=cache,target=/root/.m2 \
-    mvn -B -ntp -DskipTests dependency:go-offline
+RUN mvn -B -ntp -DskipTests dependency:go-offline
 
 COPY src ./src
-RUN --mount=type=cache,target=/root/.m2 \
-    mvn -B -ntp -DskipTests package
+RUN mvn -B -ntp -DskipTests package
 
 # ---------- Runtime stage ----------
 FROM eclipse-temurin:17-jre

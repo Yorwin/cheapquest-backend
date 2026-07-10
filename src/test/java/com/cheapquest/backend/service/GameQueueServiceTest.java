@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.cheapquest.backend.client.FirebaseClient;
+import com.cheapquest.backend.dao.HydrationQueueDao;
 import com.cheapquest.backend.dto.firebase.FailedDoc;
 import com.cheapquest.backend.dto.firebase.PendingDoc;
 import com.cheapquest.backend.service.GameQueueService.QueueEntry;
@@ -20,18 +20,18 @@ class GameQueueServiceTest {
     private static final Instant T1 = Instant.parse("2026-06-29T10:00:00Z");
     private static final Instant T2 = Instant.parse("2026-06-30T10:00:00Z");
 
-    private FirebaseClient firebaseClient;
+    private HydrationQueueDao hydrationQueueDao;
     private GameQueueService service;
 
     @BeforeEach
     void setUp() {
-        firebaseClient = mock(FirebaseClient.class);
-        service = new GameQueueService(firebaseClient);
+        hydrationQueueDao = mock(HydrationQueueDao.class);
+        service = new GameQueueService(hydrationQueueDao);
     }
 
     @Test
     void list_pendingMapsPendingDocsWithNullFirstAttempt() {
-        when(firebaseClient.readPending()).thenReturn(List.of(
+        when(hydrationQueueDao.readPending()).thenReturn(List.of(
                 new PendingDoc("portal", 1, T2, null),
                 new PendingDoc("hl2", 2, T2, "rawg 503")));
 
@@ -50,7 +50,7 @@ class GameQueueServiceTest {
 
     @Test
     void list_failedMapsFailedDocsWithFirstAttempt() {
-        when(firebaseClient.readFailed()).thenReturn(List.of(
+        when(hydrationQueueDao.readFailed()).thenReturn(List.of(
                 new FailedDoc("portal", 3, T1, T2, "both sources returned empty")));
 
         List<QueueEntry> result = service.list(Status.FAILED);
@@ -66,7 +66,7 @@ class GameQueueServiceTest {
 
     @Test
     void list_emptyQueueReturnsEmptyList() {
-        when(firebaseClient.readPending()).thenReturn(List.of());
+        when(hydrationQueueDao.readPending()).thenReturn(List.of());
 
         assertThat(service.list(Status.PENDING)).isEmpty();
     }
@@ -79,9 +79,9 @@ class GameQueueServiceTest {
     }
 
     @Test
-    void constructor_rejectsNullFirebaseClient() {
+    void constructor_rejectsNullDao() {
         assertThatThrownBy(() -> new GameQueueService(null))
                 .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("firebaseClient");
+                .hasMessageContaining("hydrationQueueDao");
     }
 }

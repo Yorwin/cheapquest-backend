@@ -1,9 +1,8 @@
 package com.cheapquest.backend.service;
 
 import com.cheapquest.backend.client.DeepLClient;
-import com.cheapquest.backend.client.FirebaseClient;
-import com.cheapquest.backend.domain.rawg.RawgDetails;
-import com.cheapquest.backend.dto.firebase.GameDocumentDto;
+import com.cheapquest.backend.dao.GameDao;
+import com.cheapquest.backend.dao.TranslationQueueDao;
 import com.cheapquest.backend.dto.firebase.RawgDocumentDto;
 import com.cheapquest.backend.dto.firebase.TranslationFailedDoc;
 import com.cheapquest.backend.dto.firebase.TranslationPendingDoc;
@@ -45,23 +44,27 @@ public final class TranslationService {
     /** Locales the pipeline will translate (target_lang list). */
     public static final List<String> DEFAULT_TARGET_LOCALES = List.of("es", "fr");
 
-    private final FirebaseClient firebaseClient;
+    private final GameDao gameDao;
+    private final TranslationQueueDao translationQueueDao;
     private final DeepLClient deepLClient;
     private final FirebaseMapper firebaseMapper;
     private final Clock clock;
     private final int maxAttempts;
     private final List<String> targetLocales;
 
-    public TranslationService(FirebaseClient firebaseClient, DeepLClient deepLClient,
-            FirebaseMapper firebaseMapper, Clock clock, int maxAttempts) {
-        this(firebaseClient, deepLClient, firebaseMapper, clock, maxAttempts,
+    public TranslationService(GameDao gameDao, TranslationQueueDao translationQueueDao,
+            DeepLClient deepLClient, FirebaseMapper firebaseMapper, Clock clock,
+            int maxAttempts) {
+        this(gameDao, translationQueueDao, deepLClient, firebaseMapper, clock, maxAttempts,
                 DEFAULT_TARGET_LOCALES);
     }
 
-    public TranslationService(FirebaseClient firebaseClient, DeepLClient deepLClient,
-            FirebaseMapper firebaseMapper, Clock clock, int maxAttempts,
-            List<String> targetLocales) {
-        this.firebaseClient = Objects.requireNonNull(firebaseClient, "firebaseClient");
+    public TranslationService(GameDao gameDao, TranslationQueueDao translationQueueDao,
+            DeepLClient deepLClient, FirebaseMapper firebaseMapper, Clock clock,
+            int maxAttempts, List<String> targetLocales) {
+        this.gameDao = Objects.requireNonNull(gameDao, "gameDao");
+        this.translationQueueDao = Objects.requireNonNull(translationQueueDao,
+                "translationQueueDao");
         this.deepLClient = Objects.requireNonNull(deepLClient, "deepLClient");
         this.firebaseMapper = Objects.requireNonNull(firebaseMapper, "firebaseMapper");
         this.clock = Objects.requireNonNull(clock, "clock");
@@ -83,7 +86,7 @@ public final class TranslationService {
             return;
         }
         for (String locale : targetLocales) {
-            firebaseClient.enqueueTranslation(slug, locale, rawgFetchedAt);
+            translationQueueDao.enqueue(slug, locale, rawgFetchedAt);
         }
         log.info("translation_enqueued slug={} locales={} source_fetched_at={}",
                 slug, targetLocales, rawgFetchedAt);
@@ -97,7 +100,7 @@ public final class TranslationService {
      * {@code translations-failed}.
      */
     public int translateAll() {
-        List<TranslationPendingDoc> pending = firebaseClient.readTranslationPending();
+        List<TranslationPendingDoc> pending = translationQueueDao.readPending();
         if (pending.isEmpty()) {
             log.info("translate_all pending_count=0 done=0");
             return 0;
@@ -125,13 +128,14 @@ public final class TranslationService {
         log.info("translate_doc_start slug={} locale={} attempts={} source_fetched_at={}",
                 slug, locale, entry.attempts(), entry.sourceFetchedAt());
         try {
-            GameDocumentDto doc = firebaseClient.readOne(slug).orElse(null);
-            if (doc == null) {
+            var docOpt = gameDao.read(slug);
+            if (docOpt.isEmpty()) {
                 log.warn("translate_doc_missing slug={} locale={} reason=game_doc_gone",
                         slug, locale);
                 recordFailureAndMaybeMoveToFailed(entry, "game document gone");
                 return false;
             }
+            var doc = docOpt.get();
             if (doc.rawg() == null || doc.rawg().data() == null) {
                 log.warn("translate_doc_missing slug={} locale={} reason=no_rawg_data",
                         slug, locale);
@@ -150,11 +154,11 @@ public final class TranslationService {
             String translatedDescription = outputs.get(0);
             List<String> translatedTags = outputs.subList(1, outputs.size());
 
-            firebaseClient.writeLocaleTranslation(
+            gameDao.writeLocaleTranslation(
                     slug, locale,
                     translatedDescription, translatedTags,
                     entry.sourceFetchedAt(), Instant.now(clock));
-            firebaseClient.removeFromTranslationPending(slug, locale);
+            translationQueueDao.removeFromPending(slug, locale);
             log.info("translate_doc_ok slug={} locale={} chars_in={} chars_out={}",
                     slug, locale, sumLength(inputs), sumLength(outputs));
             return true;
@@ -180,12 +184,12 @@ public final class TranslationService {
                     entry.slug(), entry.locale(), newAttempts,
                     entry.lastAttemptAt() == null ? now : entry.lastAttemptAt(),
                     now, error);
-            firebaseClient.moveToTranslationFailed(failed);
+            translationQueueDao.moveToFailed(failed);
             log.warn("translate_doc_moved_to_failed slug={} locale={} attempts={} last_error=\"{}\"",
                     entry.slug(), entry.locale(), newAttempts, error);
             return;
         }
-        firebaseClient.recordTranslationFailure(
+        translationQueueDao.recordFailure(
                 entry.slug(), entry.locale(), newAttempts, Instant.now(clock), error);
     }
 

@@ -1,6 +1,7 @@
 package com.cheapquest.backend.service;
 
-import com.cheapquest.backend.client.FirebaseClient;
+import com.cheapquest.backend.dao.GameDao;
+import com.cheapquest.backend.dao.HydrationQueueDao;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
 import com.cheapquest.backend.mapper.FirebaseMapper;
 import java.time.Clock;
@@ -22,10 +23,10 @@ import org.slf4j.LoggerFactory;
  *   <li>Normalise whitespace and validate non-empty.</li>
  *   <li>Derive a slug via {@link FirebaseMapper#toSlug(String)}.</li>
  *   <li>Create the game document via
- *       {@link FirebaseClient#createIfNotExists(String, GameDocumentDto)}
+ *       {@link GameDao#createIfNotExists(String, GameDocumentDto)}
  *       (atomic, idempotent).</li>
  *   <li>Enqueue the slug via
- *       {@link FirebaseClient#addToPending(String)} (idempotent
+ *       {@link HydrationQueueDao#enqueue(String)} (idempotent
  *       no-op if a pending entry already exists).</li>
  * </ol>
  *
@@ -39,7 +40,7 @@ import org.slf4j.LoggerFactory;
  * <p><b>Idempotency</b>: re-submitting the same batch is safe.
  * Names whose doc was already in {@code games/{slug}} on the
  * previous call come back as {@code ALREADY_EXISTED} and the
- * {@code addToPending} call is a no-op when a pending entry
+ * {@code enqueue} call is a no-op when a pending entry
  * already exists.
  *
  * <p><b>Language</b>: titles must be provided in English; that
@@ -60,13 +61,16 @@ public final class GameIngestService {
     public static final String DEFAULT_LANGUAGE = "en";
     public static final Set<String> SUPPORTED_LANGUAGES = Set.of("en");
 
-    private final FirebaseClient firebaseClient;
+    private final GameDao gameDao;
+    private final HydrationQueueDao hydrationQueueDao;
     private final FirebaseMapper firebaseMapper;
     private final Clock clock;
 
-    public GameIngestService(FirebaseClient firebaseClient,
+    public GameIngestService(GameDao gameDao,
+            HydrationQueueDao hydrationQueueDao,
             FirebaseMapper firebaseMapper, Clock clock) {
-        this.firebaseClient = Objects.requireNonNull(firebaseClient, "firebaseClient");
+        this.gameDao = Objects.requireNonNull(gameDao, "gameDao");
+        this.hydrationQueueDao = Objects.requireNonNull(hydrationQueueDao, "hydrationQueueDao");
         this.firebaseMapper = Objects.requireNonNull(firebaseMapper, "firebaseMapper");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
@@ -134,8 +138,8 @@ public final class GameIngestService {
         }
         try {
             GameDocumentDto doc = firebaseMapper.toBootstrapDocument(name, slug);
-            boolean created = firebaseClient.createIfNotExists(slug, doc);
-            firebaseClient.addToPending(slug);
+            boolean created = gameDao.createIfNotExists(slug, doc);
+            hydrationQueueDao.enqueue(slug);
             IngestAction action = created ? IngestAction.CREATED : IngestAction.ALREADY_EXISTED;
             accepted.add(new IngestItem(name, slug, action));
             log.info("ingest_one_ok name=\"{}\" slug={} action={}", name, slug, action);

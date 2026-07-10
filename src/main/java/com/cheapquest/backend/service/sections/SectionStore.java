@@ -25,7 +25,7 @@ import java.util.Optional;
  *
  * <p>The store does <strong>not</strong> read game data: the
  * catalog is read by the caller (typically
- * {@code SectionsService} via {@code FirebaseClient} and
+ * {@code SectionsService} via the section store and
  * {@code GameViewMapper}). Keeping the two concerns separate
  * means the section store can be swapped (e.g. for a memory
  * backend in tests) without touching the games side.

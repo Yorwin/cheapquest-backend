@@ -11,7 +11,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.cheapquest.backend.client.FirebaseClient;
+import com.cheapquest.backend.dao.GameDao;
+import com.cheapquest.backend.dao.HydrationQueueDao;
 import com.cheapquest.backend.domain.AggregatedGame;
 import com.cheapquest.backend.domain.GameDeals;
 import com.cheapquest.backend.domain.Offer;
@@ -51,7 +52,8 @@ class GameHydrationServiceTest {
 
     private static final Instant T = Instant.parse("2026-06-30T10:00:00Z");
 
-    private FirebaseClient firebaseClient;
+    private GameDao gameDao;
+    private HydrationQueueDao hydrationQueueDao;
     private FirebaseMapper firebaseMapper;
     private GameLookup gameLookup;
     private GameMerger merger;
@@ -61,21 +63,22 @@ class GameHydrationServiceTest {
 
     @BeforeEach
     void setUp() {
-        firebaseClient = mock(FirebaseClient.class);
+        gameDao = mock(GameDao.class);
+        hydrationQueueDao = mock(HydrationQueueDao.class);
         firebaseMapper = mock(FirebaseMapper.class);
         gameLookup = mock(GameLookup.class);
         merger = new GameMerger(Clock.fixed(T, ZoneOffset.UTC));
         validator = new ValidationService(Clock.fixed(T, ZoneOffset.UTC));
         refreshPolicy = mock(RefreshPolicy.class);
         service = new GameHydrationService(
-                firebaseClient, firebaseMapper, gameLookup, merger, validator,
+                gameDao, hydrationQueueDao, firebaseMapper, gameLookup, merger, validator,
                 refreshPolicy, Clock.fixed(T, ZoneOffset.UTC));
     }
 
     @Test
     void constructor_rejectsNullDependencies() {
         org.assertj.core.api.Assertions.assertThatThrownBy(() ->
-                        new GameHydrationService(null, firebaseMapper, gameLookup, merger, validator,
+                        new GameHydrationService(null, hydrationQueueDao, firebaseMapper, gameLookup, merger, validator,
                                 refreshPolicy, Clock.systemUTC()))
                 .isInstanceOf(NullPointerException.class);
     }
@@ -101,7 +104,7 @@ class GameHydrationServiceTest {
         assertThat(report.dealsRefreshed()).isEqualTo(1);
         assertThat(report.rawgRefreshed()).isEqualTo(1);
         assertThat(report.failures()).isEmpty();
-        verify(firebaseClient).update(eq("portal"), any(HydrationPatch.class));
+        verify(gameDao).update(eq("portal"), any(HydrationPatch.class));
     }
 
     @Test
@@ -120,7 +123,7 @@ class GameHydrationServiceTest {
 
         service.hydrateAll();
 
-        org.mockito.Mockito.verify(firebaseClient).markLocaleSynced(
+        org.mockito.Mockito.verify(gameDao).markLocaleSynced(
                 eq("portal"), eq("en"), any(Instant.class));
     }
 
@@ -139,7 +142,7 @@ class GameHydrationServiceTest {
 
         service.hydrateAll();
 
-        org.mockito.Mockito.verify(firebaseClient, org.mockito.Mockito.never())
+        org.mockito.Mockito.verify(gameDao, org.mockito.Mockito.never())
                 .markLocaleSynced(anyString(), anyString(), any(Instant.class));
     }
 
@@ -162,7 +165,7 @@ class GameHydrationServiceTest {
         assertThat(report.processed()).isEqualTo(1);
         assertThat(report.partial()).isEqualTo(1);
         assertThat(report.complete()).isZero();
-        verify(firebaseClient).update(eq("portal"), any(HydrationPatch.class));
+        verify(gameDao).update(eq("portal"), any(HydrationPatch.class));
     }
 
     @Test
@@ -181,7 +184,7 @@ class GameHydrationServiceTest {
         assertThat(report.complete()).isZero();
         assertThat(report.partial()).isZero();
         assertThat(report.failed()).isZero();
-        verify(firebaseClient, never()).update(anyString(), any(HydrationPatch.class));
+        verify(gameDao, never()).update(anyString(), any(HydrationPatch.class));
     }
 
     @Test
@@ -208,7 +211,7 @@ class GameHydrationServiceTest {
         assertThat(report.partial()).isZero();
         assertThat(report.dealsRefreshed()).isEqualTo(1);
         assertThat(report.rawgRefreshed()).isZero();
-        verify(firebaseClient).update(eq("portal"), any(HydrationPatch.class));
+        verify(gameDao).update(eq("portal"), any(HydrationPatch.class));
     }
 
     @Test
@@ -232,7 +235,7 @@ class GameHydrationServiceTest {
         assertThat(report.partial()).isZero();
         assertThat(report.dealsRefreshed()).isZero();
         assertThat(report.rawgRefreshed()).isEqualTo(1);
-        verify(firebaseClient).update(eq("portal"), any(HydrationPatch.class));
+        verify(gameDao).update(eq("portal"), any(HydrationPatch.class));
     }
 
     @Test
@@ -251,7 +254,7 @@ class GameHydrationServiceTest {
         assertThat(report.empty()).isZero();
         assertThat(report.failed()).isZero();
         verify(gameLookup, never()).lookupByTitle(anyString(), any());
-        verify(firebaseClient, never()).update(anyString(), any(HydrationPatch.class));
+        verify(gameDao, never()).update(anyString(), any(HydrationPatch.class));
     }
 
     @Test
@@ -264,7 +267,7 @@ class GameHydrationServiceTest {
                 .thenReturn(new GameLookup.GameLookupResult(sampleDeals(), sampleRawgAgg()));
         when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
         org.mockito.Mockito.doThrow(new FirebaseUnavailableException("boom"))
-                .when(firebaseClient).update(eq("portal"), any(HydrationPatch.class));
+                .when(gameDao).update(eq("portal"), any(HydrationPatch.class));
 
         HydrationReport report = service.hydrateAll();
 
@@ -289,7 +292,7 @@ class GameHydrationServiceTest {
         when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
         org.mockito.Mockito.doThrow(new DocumentNotFoundException("document missing: portal",
                         new FirebaseUnavailableException("failed updating portal", null)))
-                .when(firebaseClient).update(eq("portal"), any(HydrationPatch.class));
+                .when(gameDao).update(eq("portal"), any(HydrationPatch.class));
 
         HydrationReport report = service.hydrateAll();
 
@@ -310,7 +313,7 @@ class GameHydrationServiceTest {
 
         service.hydrateAll();
 
-        org.mockito.Mockito.verify(firebaseClient).removeFromPending("portal");
+        org.mockito.Mockito.verify(hydrationQueueDao).removeFromPending("portal");
     }
 
     @Test
@@ -329,9 +332,9 @@ class GameHydrationServiceTest {
 
         assertThat(report.failed()).isEqualTo(1);
         assertThat(report.movedToFailed()).isZero();
-        org.mockito.Mockito.verify(firebaseClient).recordPendingFailure(
+        org.mockito.Mockito.verify(hydrationQueueDao).recordFailure(
                 eq("portal"), eq(1), any(Instant.class), anyString());
-        org.mockito.Mockito.verify(firebaseClient, org.mockito.Mockito.never())
+        org.mockito.Mockito.verify(hydrationQueueDao, org.mockito.Mockito.never())
                 .moveToFailed(any());
     }
 
@@ -344,9 +347,9 @@ class GameHydrationServiceTest {
         com.cheapquest.backend.dto.firebase.PendingDoc entry =
                 new com.cheapquest.backend.dto.firebase.PendingDoc(
                         "portal", 2, Instant.parse("2026-06-30T10:00:00Z"), "previous error");
-        when(firebaseClient.readPending()).thenReturn(List.of(entry));
-        when(firebaseClient.readOne("portal")).thenReturn(Optional.of(doc));
-        org.mockito.Mockito.doNothing().when(firebaseClient).removeFromPending("portal");
+        when(hydrationQueueDao.readPending()).thenReturn(List.of(entry));
+        when(gameDao.read("portal")).thenReturn(Optional.of(doc));
+        org.mockito.Mockito.doNothing().when(hydrationQueueDao).removeFromPending("portal");
         when(refreshPolicy.decide(doc, false))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
@@ -361,10 +364,10 @@ class GameHydrationServiceTest {
         assertThat(report.failed()).isZero();
         assertThat(report.movedToFailed()).isEqualTo(1);
         assertThat(report.movedToFailedList()).containsExactly("portal");
-        org.mockito.Mockito.verify(firebaseClient).moveToFailed(any());
+        org.mockito.Mockito.verify(hydrationQueueDao).moveToFailed(any());
         // The slug is removed from pending by moveToFailed itself,
         // so removeFromPending must NOT be called separately.
-        org.mockito.Mockito.verify(firebaseClient, org.mockito.Mockito.never())
+        org.mockito.Mockito.verify(hydrationQueueDao, org.mockito.Mockito.never())
                 .removeFromPending(anyString());
     }
 
@@ -392,9 +395,9 @@ class GameHydrationServiceTest {
         // and after 3 strikes the slug moves to the failed DLQ.
         assertThat(report.empty()).isEqualTo(1);
         assertThat(report.failed()).isZero();
-        org.mockito.Mockito.verify(firebaseClient).recordPendingFailure(
+        org.mockito.Mockito.verify(hydrationQueueDao).recordFailure(
                 eq("portal"), eq(1), any(Instant.class), anyString());
-        org.mockito.Mockito.verify(firebaseClient, org.mockito.Mockito.never())
+        org.mockito.Mockito.verify(hydrationQueueDao, org.mockito.Mockito.never())
                 .removeFromPending(anyString());
     }
 
@@ -406,14 +409,14 @@ class GameHydrationServiceTest {
         // and bump the attempt counter.
         com.cheapquest.backend.dto.firebase.PendingDoc entry =
                 new com.cheapquest.backend.dto.firebase.PendingDoc("ghost", 0, null, null);
-        when(firebaseClient.readPending()).thenReturn(List.of(entry));
-        when(firebaseClient.readOne("ghost")).thenReturn(Optional.empty());
+        when(hydrationQueueDao.readPending()).thenReturn(List.of(entry));
+        when(gameDao.read("ghost")).thenReturn(Optional.empty());
 
         HydrationReport report = service.hydrateAll();
 
         assertThat(report.processed()).isEqualTo(1);
         assertThat(report.empty()).isEqualTo(1);
-        org.mockito.Mockito.verify(firebaseClient).recordPendingFailure(
+        org.mockito.Mockito.verify(hydrationQueueDao).recordFailure(
                 eq("ghost"), eq(1), any(Instant.class), anyString());
     }
 
@@ -439,8 +442,8 @@ class GameHydrationServiceTest {
 
         assertThat(report.processed()).isEqualTo(2);
         assertThat(report.failed()).isEqualTo(1);
-        org.mockito.Mockito.verify(firebaseClient).removeFromPending("portal");
-        org.mockito.Mockito.verify(firebaseClient).recordPendingFailure(
+        org.mockito.Mockito.verify(hydrationQueueDao).removeFromPending("portal");
+        org.mockito.Mockito.verify(hydrationQueueDao).recordFailure(
                 eq("hl2"), eq(1), any(Instant.class), anyString());
     }
 
@@ -478,7 +481,7 @@ class GameHydrationServiceTest {
         assertThat(report.complete()).isEqualTo(3);
         assertThat(report.dealsRefreshed()).isEqualTo(2);
         assertThat(report.rawgRefreshed()).isEqualTo(3);
-        verify(firebaseClient, times(3)).update(anyString(), any(HydrationPatch.class));
+        verify(gameDao, times(3)).update(anyString(), any(HydrationPatch.class));
     }
 
     @Test
@@ -503,14 +506,14 @@ class GameHydrationServiceTest {
 
     @Test
     void hydrateOne_returnsFalseWhenDocMissing() {
-        when(firebaseClient.readOne("missing")).thenReturn(java.util.Optional.empty());
+        when(gameDao.read("missing")).thenReturn(java.util.Optional.empty());
 
         assertThat(service.hydrateOne("missing")).isFalse();
     }
 
     @Test
     void hydrateOne_returnsFalseWhenBothSourcesFail() {
-        when(firebaseClient.readOne("portal")).thenReturn(java.util.Optional.of(sampleDoc("portal", "Portal")));
+        when(gameDao.read("portal")).thenReturn(java.util.Optional.of(sampleDoc("portal", "Portal")));
         when(refreshPolicy.decide(any(), anyBoolean()))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
@@ -521,7 +524,7 @@ class GameHydrationServiceTest {
 
     @Test
     void hydrateOne_returnsTrueAndWritesPatchOnSuccess() {
-        when(firebaseClient.readOne("portal")).thenReturn(java.util.Optional.of(sampleDoc("portal", "Portal")));
+        when(gameDao.read("portal")).thenReturn(java.util.Optional.of(sampleDoc("portal", "Portal")));
         when(refreshPolicy.decide(any(), anyBoolean()))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
@@ -529,7 +532,7 @@ class GameHydrationServiceTest {
         when(firebaseMapper.toHydrationPatch(any(), any(), any(Boolean.class), any(Boolean.class), any())).thenReturn(samplePatch());
 
         assertThat(service.hydrateOne("portal")).isTrue();
-        verify(firebaseClient).update(eq("portal"), any(HydrationPatch.class));
+        verify(gameDao).update(eq("portal"), any(HydrationPatch.class));
     }
 
     @Test
@@ -555,7 +558,7 @@ class GameHydrationServiceTest {
                         "fr", LocaleBlock.unsynced()),
                 new ValidationReportDto("COMPLETE", List.of(),
                         "2026-06-30T10:00:00Z", null));
-        when(firebaseClient.readOne(slug)).thenReturn(Optional.of(doc));
+        when(gameDao.read(slug)).thenReturn(Optional.of(doc));
         when(refreshPolicy.decide(any(), anyBoolean()))
                 .thenReturn(new RefreshPolicy.RefreshDecision(true, true));
         when(gameLookup.lookupByTitle(eq("Portal"), any()))
@@ -963,10 +966,10 @@ class GameHydrationServiceTest {
         for (GameDocumentDto doc : docs) {
             String slug = doc.slug() == null ? "<null-slug>" : doc.slug();
             entries.add(new PendingDoc(slug, 0, null, null));
-            when(firebaseClient.readOne(slug)).thenReturn(Optional.of(doc));
-            org.mockito.Mockito.doNothing().when(firebaseClient).removeFromPending(slug);
+            when(gameDao.read(slug)).thenReturn(Optional.of(doc));
+            org.mockito.Mockito.doNothing().when(hydrationQueueDao).removeFromPending(slug);
         }
-        when(firebaseClient.readPending()).thenReturn(entries);
+        when(hydrationQueueDao.readPending()).thenReturn(entries);
     }
 
     @Test
@@ -978,16 +981,16 @@ class GameHydrationServiceTest {
                 new PendingDoc("stale1", 2, now.minus(Duration.ofHours(1)), "blip 1"),
                 new PendingDoc("stale2", 3, now.minus(Duration.ofHours(5)), "stuck"),
                 new PendingDoc("fresh", 1, now.minus(Duration.ofMinutes(1)), null));
-        when(firebaseClient.readPending()).thenReturn(pending);
+        when(hydrationQueueDao.readPending()).thenReturn(pending);
 
         int recovered = service.recoverStalePending(Duration.ofMinutes(30));
 
         assertThat(recovered).isEqualTo(2);
-        org.mockito.Mockito.verify(firebaseClient).replacePending(
+        org.mockito.Mockito.verify(hydrationQueueDao).replacePending(
                 new PendingDoc("stale1", 0, null, null));
-        org.mockito.Mockito.verify(firebaseClient).replacePending(
+        org.mockito.Mockito.verify(hydrationQueueDao).replacePending(
                 new PendingDoc("stale2", 0, null, null));
-        org.mockito.Mockito.verify(firebaseClient, org.mockito.Mockito.never())
+        org.mockito.Mockito.verify(hydrationQueueDao, org.mockito.Mockito.never())
                 .replacePending(org.mockito.ArgumentMatchers.argThat(
                         p -> p != null && "fresh".equals(p.slug())));
     }
@@ -1000,18 +1003,18 @@ class GameHydrationServiceTest {
         Instant now = Instant.parse("2026-06-30T10:00:00Z");
         List<PendingDoc> pending = List.of(
                 new PendingDoc("never_attempted", 0, null, null));
-        when(firebaseClient.readPending()).thenReturn(pending);
+        when(hydrationQueueDao.readPending()).thenReturn(pending);
 
         int recovered = service.recoverStalePending(Duration.ofMinutes(30));
 
         assertThat(recovered).isZero();
-        org.mockito.Mockito.verify(firebaseClient, org.mockito.Mockito.never())
+        org.mockito.Mockito.verify(hydrationQueueDao, org.mockito.Mockito.never())
                 .replacePending(any());
     }
 
     @Test
     void recoverStalePending_returnsZeroWhenQueueIsEmpty() {
-        when(firebaseClient.readPending()).thenReturn(List.of());
+        when(hydrationQueueDao.readPending()).thenReturn(List.of());
 
         int recovered = service.recoverStalePending(Duration.ofMinutes(30));
 

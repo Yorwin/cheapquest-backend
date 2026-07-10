@@ -32,7 +32,7 @@ import org.slf4j.LoggerFactory;
  *       recompute call, regardless of which section is
  *       being built; the supplier is the only coupling
  *       to the games collection and can wrap any
- *       {@code FirebaseClient}-style source.</li>
+ *       Firestore-backed source.</li>
  *   <li>Find the {@link SectionBuilder} for the requested
  *       name. If there is none, the run is recorded as
  *       {@link Status#SKIPPED_NO_BUILDER} (not an error:

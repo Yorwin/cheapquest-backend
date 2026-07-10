@@ -39,6 +39,12 @@ El re-fetch periódico se dispara mediante un endpoint REST invocado por un cron
 - Múltiples clases públicas top-level en un mismo archivo.
 - Field injection con `@Autowired` (no aplica al ser Java plano, pero tampoco se usará ningún container de DI oculto).
 
+### DAO Pattern
+- **Interfaces**: `GameDao`, `HydrationQueueDao`, `TranslationQueueDao` en `dao/`
+- **Implementaciones Firestore**: `dao/firestore/Firestore*.java`
+- **Ventaja**: el almacenamiento se puede cambiar (Firebase → otra DB) sin tocar endpoints ni servicios
+- **Lock single-flight**: implementado directamente en `AdminRefreshEndpoint` usando Firestore
+
 ---
 
 ## 3. Domain Model
@@ -215,10 +221,10 @@ El resultado del merge se pasa luego a `mapper.toDetails(merged, …)` y desde a
 | RAWG | GET | `/games/{slug}/additions` | DLCs / sibling games | `RawgClient.getAdditions` |
 | RAWG | GET | `/games/{slug}/development-team` | Creadores | `RawgClient.getDevelopmentTeam` |
 | DeepL | POST | `/v2/translate` | Traducción de textos | `DeepLClient.translate` |
-| Firestore | GET | `/games/pending` | Lista de juegos a procesar | `FirebaseClient.readPending` |
-| Firestore | SET | `/games/{lang}/{id}` | Upsert resultado | `FirebaseClient.upsert` |
-| Firestore | SET | `/games/failed/{id}` | DLQ de fallos | `FirebaseClient.moveToFailed` |
-| Firestore | SET | `/admin/lock` | Lock single-flight del refresh | `FirebaseClient.acquireLock` |
+| Firestore | GET | `/games/pending` | Lista de juegos a procesar | `HydrationQueueDao.readPending` |
+| Firestore | SET | `/games/{lang}/{id}` | Upsert resultado | `GameDao.createIfNotExists` / `GameDao.update` |
+| Firestore | SET | `/games/failed/{id}` | DLQ de fallos | `HydrationQueueDao.moveToFailed` |
+| Firestore | SET | `/admin/lock` | Lock single-flight del refresh | `AdminRefreshEndpoint` (Firestore directo) |
 | Firestore | GET | `/sections/{YYYY-MM-DD}/items/{slug}` | Lee snapshot histórico | `FirestoreSectionStore.read` |
 | Firestore | GET | `/sections/latest/items/{slug}` | Lee mirror live | `FirestoreSectionStore.readLatest` |
 | Firestore | GET | `/sections/latest/items/*` (collection) | Lee las 5 secciones live en un solo get | `FirestoreSectionStore.readAllLatest` |
@@ -242,7 +248,7 @@ El resultado del merge se pasa luego a `mapper.toDetails(merged, …)` y desde a
 
 Para cada `gameId` en `/games/pending`:
 
-1. **Lectura**: `FirebaseClient.readPending()` devuelve `List<String>` con los slugs/IDs.
+1. **Lectura**: `HydrationQueueDao.readPending()` devuelve `List<PendingDoc>` con los slugs/IDs.
 2. **Búsqueda CheapShark**: `CheapSharkClient.findByTitle(game.name)` → mejor match por título (heurística: igualdad case-insensitive; fallback Levenshtein si RAWG devuelve 404).
 3. **Detalle CheapShark**: `CheapSharkClient.getDetails(match.gameId)` → `List<Store>` (ofertas).
 4. **Búsqueda RAWG**: `RawgClient.searchByName(name)` → `picked` (con `id` + `slug` + summary).
@@ -396,7 +402,7 @@ Respuesta `200 OK`:
 - `401 Unauthorized` — falta/mal token.
 - `500 Internal Server Error` ante cualquier otro fallo.
 
-> El endpoint es de solo lectura: no encola, no reencola, no modifica nada. Para mover una entrada de `failed` de vuelta a `pending` se usa `replacePending` desde una Firebase Function o un script externo (ver §3 y `FirebaseClient`).
+> El endpoint es de solo lectura: no encola, no reencola, no modifica nada. Para mover una entrada de `failed` de vuelta a `pending` se usa `replacePending` desde una Firebase Function o un script externo (ver §3 y `HydrationQueueDao`).
 
 ### Endpoint extra
 ```
@@ -535,7 +541,15 @@ backend-cheapquest/
  │   │   │   │   ├── CheapSharkClient.java
  │   │   │   │   ├── RawgClient.java
  │   │   │   │   ├── DeepLClient.java
- │   │   │   │   └── FirebaseClient.java
+ │   │   │   │   └── FirestoreRetrier.java             # shared retry+backoff
+ │   │   │   ├── dao/
+ │   │   │   │   ├── GameDao.java                       # interface
+ │   │   │   │   ├── HydrationQueueDao.java             # interface
+ │   │   │   │   ├── TranslationQueueDao.java           # interface
+ │   │   │   │   └── firestore/
+ │   │   │   │       ├── FirestoreGameDao.java          # Firestore impl
+ │   │   │   │       ├── FirestoreHydrationQueueDao.java
+ │   │   │   │       └── FirestoreTranslationQueueDao.java
  │   │   │   ├── domain/
  │   │   │   │   ├── Game.java
  │   │   │   │   ├── Store.java

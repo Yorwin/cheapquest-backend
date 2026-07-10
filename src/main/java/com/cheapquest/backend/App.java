@@ -2,13 +2,19 @@ package com.cheapquest.backend;
 
 import com.cheapquest.backend.client.CheapSharkClient;
 import com.cheapquest.backend.client.DeepLClient;
-import com.cheapquest.backend.client.FirebaseClient;
+import com.cheapquest.backend.client.FirestoreRetrier;
 import com.cheapquest.backend.client.RawgClient;
 import com.cheapquest.backend.config.AppProperties;
 import com.cheapquest.backend.config.DefaultHttpFetcher;
 import com.cheapquest.backend.config.FirebaseConfig;
 import com.cheapquest.backend.config.HttpClientFactory;
 import com.cheapquest.backend.config.HttpFetcher;
+import com.cheapquest.backend.dao.GameDao;
+import com.cheapquest.backend.dao.HydrationQueueDao;
+import com.cheapquest.backend.dao.TranslationQueueDao;
+import com.cheapquest.backend.dao.firestore.FirestoreGameDao;
+import com.cheapquest.backend.dao.firestore.FirestoreHydrationQueueDao;
+import com.cheapquest.backend.dao.firestore.FirestoreTranslationQueueDao;
 import com.cheapquest.backend.domain.AggregatedGame;
 import com.cheapquest.backend.domain.GameDeals;
 import com.cheapquest.backend.domain.Offer;
@@ -101,8 +107,14 @@ public final class App {
             log.warn("firebase_init status=skipped reason=missing_config");
         }
 
-        FirebaseClient firebaseClient = firebaseReady
-                ? new FirebaseClient(FirestoreClient.getFirestore(FirebaseApp.getInstance()), props)
+        com.google.cloud.firestore.Firestore firestore = firebaseReady
+                ? FirestoreClient.getFirestore(FirebaseApp.getInstance())
+                : null;
+
+        // DAO layer: instantated so the services use interfaces
+        // backed by Firestore instead of a monolithic client.
+        Daos daos = firebaseReady
+                ? buildDaos(firestore, props)
                 : null;
 
         // Recover stale pending entries from any previous JVM crash
@@ -111,9 +123,9 @@ public final class App {
         // to the modes that actually need pending (smoke, validate
         // and serve skip it because they are read-only or
         // long-running and we want them to start clean).
-        if (firebaseClient != null
+        if (daos != null
                 && ("bootstrap".equals(mode) || "hydrate".equals(mode))) {
-            runPendingRecovery(firebaseClient, props, clock);
+            runPendingRecovery(daos, props, clock);
         }
 
         List<CheapSharkStoreDto> stores = loadStoresOrAbort(client);
@@ -125,7 +137,7 @@ public final class App {
         GameAggregationService service = new GameAggregationService(client, mapper, stores, clock);
 
         if ("bootstrap".equals(mode)) {
-            runBootstrap(firebaseClient, new FirebaseMapper(clock));
+            runBootstrap(daos, new FirebaseMapper(clock));
             log.info("bootstrap_end");
             return;
         }
@@ -137,19 +149,19 @@ public final class App {
 			if (force) {
 				log.info("hydrate_init force=true reason=ignoring_cadence");
 			}
-			runHydrate(firebaseClient, new FirebaseMapper(clock), gameLookup, validator, merger, refreshPolicy, force, props);
+			runHydrate(daos, new FirebaseMapper(clock), gameLookup, validator, merger, refreshPolicy, force, props);
 			log.info("hydrate_end");
 			return;
 		}
 
 		if ("validate".equals(mode)) {
-			runValidate(firebaseClient);
+			runValidate(daos);
 			log.info("validate_end");
 			return;
 		}
 
 		if ("translate".equals(mode)) {
-			runTranslate(firebaseClient, new FirebaseMapper(clock), clock, props);
+			runTranslate(daos, new FirebaseMapper(clock), clock, props);
 			log.info("translate_end");
 			return;
 		}
@@ -161,12 +173,12 @@ public final class App {
 		}
 
 		if ("serve".equals(mode)) {
-			runServe(firebaseClient, service, rawgService, validator, merger, props, gson, clock);
+			runServe(daos, firestore, service, rawgService, validator, merger, props, gson, clock);
 			return;
 		}
 
 		if ("enqueue-all".equals(mode)) {
-			runEnqueueAll(firebaseClient);
+			runEnqueueAll(daos);
 			log.info("enqueue_all_end");
 			return;
 		}
@@ -178,8 +190,8 @@ public final class App {
         log.info("smoke_end");
     }
 
-    private static void runBootstrap(FirebaseClient firebaseClient, FirebaseMapper firebaseMapper) {
-        if (firebaseClient == null) {
+    private static void runBootstrap(Daos daos, FirebaseMapper firebaseMapper) {
+        if (daos == null) {
             log.warn("bootstrap_abort reason=firebase_not_ready");
             return;
         }
@@ -191,13 +203,13 @@ public final class App {
             String slug = FirebaseMapper.toSlug(game.name());
             GameDocumentDto doc = firebaseMapper.toBootstrapDocument(game.name(), slug);
             try {
-                boolean wasCreated = firebaseClient.createIfNotExists(slug, doc);
+                boolean wasCreated = daos.gameDao().createIfNotExists(slug, doc);
                 if (wasCreated) {
                     log.info("bootstrap_doc_created slug={} title=\"{}\"", slug, game.name());
                     // Freshly bootstrapped docs go straight into the
                     // pending queue so the next cron tick (or the
                     // explicit /admin/refresh call) hydrates them.
-                    firebaseClient.addToPending(slug);
+                    daos.hydrationQueueDao().enqueue(slug);
                     created++;
                 } else {
                     log.info("bootstrap_doc_skipped slug={} reason=already_exists", slug);
@@ -212,17 +224,17 @@ public final class App {
         log.info("bootstrap_done created={} skipped={} failed={}", created, skipped, failed);
     }
 
-    private static void runHydrate(FirebaseClient firebaseClient,
+    private static void runHydrate(Daos daos,
             FirebaseMapper firebaseMapper,
             GameLookup gameLookup,
             ValidationService validator, GameMerger merger,
             RefreshPolicy refreshPolicy, boolean force, AppProperties props) {
-        if (firebaseClient == null) {
+        if (daos == null) {
             log.warn("hydrate_abort reason=firebase_not_ready");
             return;
         }
         GameHydrationService hydration = new GameHydrationService(
-                firebaseClient, firebaseMapper,
+                daos.gameDao(), daos.hydrationQueueDao(), firebaseMapper,
                 gameLookup, merger, validator, refreshPolicy, Clock.systemUTC(),
                 props.refreshMaxRetries());
         com.cheapquest.backend.dto.HydrationReport report = hydration.hydrateAll(force);
@@ -241,14 +253,14 @@ public final class App {
         }
     }
 
-    private static void runValidate(FirebaseClient firebaseClient) {
-        if (firebaseClient == null) {
+    private static void runValidate(Daos daos) {
+        if (daos == null) {
             log.warn("validate_abort reason=firebase_not_ready");
             return;
         }
         ValidationConsistencyChecker checker = new ValidationConsistencyChecker();
         java.util.List<com.cheapquest.backend.dto.firebase.GameDocumentDto> docs = new java.util.ArrayList<>();
-        for (var d : firebaseClient.readAll()) {
+        for (var d : daos.gameDao().readAll()) {
             docs.add(d);
         }
         log.info("validate_read count={}", docs.size());
@@ -269,8 +281,8 @@ public final class App {
      * current code path. {@code addToPending} is idempotent so a
      * re-run is safe.
      */
-    private static void runEnqueueAll(FirebaseClient firebaseClient) {
-        if (firebaseClient == null) {
+    private static void runEnqueueAll(Daos daos) {
+        if (daos == null) {
             log.warn("enqueue_all_abort reason=firebase_not_ready");
             return;
         }
@@ -278,7 +290,7 @@ public final class App {
         int total = 0;
         int enqueued = 0;
         int failed = 0;
-        for (com.cheapquest.backend.dto.firebase.GameDocumentDto doc : firebaseClient.readAll()) {
+        for (com.cheapquest.backend.dto.firebase.GameDocumentDto doc : daos.gameDao().readAll()) {
             total++;
             String slug = doc.slug();
             if (slug == null || slug.isBlank()) {
@@ -286,7 +298,7 @@ public final class App {
                 continue;
             }
             try {
-                firebaseClient.addToPending(slug);
+                daos.hydrationQueueDao().enqueue(slug);
                 enqueued++;
                 log.info("enqueue_all_ok slug={}", slug);
             } catch (RuntimeException e) {
@@ -299,11 +311,12 @@ public final class App {
                 total, enqueued, failed);
     }
 
-    private static void runServe(FirebaseClient firebaseClient,
+    private static void runServe(Daos daos,
+            com.google.cloud.firestore.Firestore firestore,
             GameAggregationService service, RawgAggregationService rawgService,
             ValidationService validator, GameMerger merger,
             AppProperties props, Gson gson, Clock clock) {
-        if (firebaseClient == null) {
+        if (daos == null) {
             log.warn("serve_abort reason=firebase_not_ready");
             return;
         }
@@ -315,9 +328,9 @@ public final class App {
         // falls back to a no-op translation pipeline and the
         // /admin/translate endpoint has nothing to drain.
         TranslationService translationService = buildTranslationService(
-                firebaseClient, new FirebaseMapper(clock), clock, props);
+                daos, new FirebaseMapper(clock), clock, props);
         GameHydrationService hydration = new GameHydrationService(
-                firebaseClient, new FirebaseMapper(clock),
+                daos.gameDao(), daos.hydrationQueueDao(), new FirebaseMapper(clock),
                 gameLookup, merger, validator, refreshPolicy,
                 translationService, clock,
                 props.refreshMaxRetries());
@@ -325,12 +338,13 @@ public final class App {
         RefreshService refreshService = new RefreshService(lock, hydration, clock);
         com.cheapquest.backend.service.GameIngestService ingestService =
                 new com.cheapquest.backend.service.GameIngestService(
-                        firebaseClient, new FirebaseMapper(clock), clock);
+                        daos.gameDao(), daos.hydrationQueueDao(),
+                        new FirebaseMapper(clock), clock);
         com.cheapquest.backend.service.GameQueueService queueService =
-                new com.cheapquest.backend.service.GameQueueService(firebaseClient);
+                new com.cheapquest.backend.service.GameQueueService(daos.hydrationQueueDao());
 
         // Sections pipeline. The catalog is the games collection
-        // (read via FirebaseClient, projected to GameView via
+        // (read via GameDao, projected to GameView via
         // GameViewMapper) and the snapshots land under the
         // sections / sections-history collection paths. All
         // five builders (mejores-promos, vintage,
@@ -348,7 +362,7 @@ public final class App {
                 new com.cheapquest.backend.mapper.PublicSectionMapper();
         com.cheapquest.backend.service.sections.SectionStore sectionStore =
                 new com.cheapquest.backend.service.sections.FirestoreSectionStore(
-                        firebaseClient.getFirestore(),
+                        firestore,
                         props.firestoreCollectionSectionsPath(),
                         sectionSnapshotMapper);
         com.cheapquest.backend.service.sections.SectionsLock sectionsLock =
@@ -369,7 +383,7 @@ public final class App {
                                 props.sectionsNewOffersWindowDays(),
                                 clock));
         java.util.function.Supplier<java.util.List<com.cheapquest.backend.domain.sections.GameView>> catalogSupplier =
-                () -> gameViewMapper.toGameViews(firebaseClient.readAll());
+                () -> gameViewMapper.toGameViews(daos.gameDao().readAll());
         com.cheapquest.backend.service.sections.SectionsService sectionsService =
                 new com.cheapquest.backend.service.sections.SectionsService(
                         sectionStore, sectionsLock, sectionBuilders,
@@ -418,10 +432,10 @@ public final class App {
         }
     }
 
-    private static void runPendingRecovery(FirebaseClient firebaseClient,
+    private static void runPendingRecovery(Daos daos,
             AppProperties props, Clock clock) {
         GameHydrationService recoveryOnly = new GameHydrationService(
-                firebaseClient, new FirebaseMapper(clock),
+                daos.gameDao(), daos.hydrationQueueDao(), new FirebaseMapper(clock),
                 new NoopGameLookup(), new GameMerger(clock),
                 new ValidationService(clock),
                 new RefreshPolicy(props, clock),
@@ -456,14 +470,14 @@ public final class App {
         }
     }
 
-    private static void runTranslate(FirebaseClient firebaseClient,
+    private static void runTranslate(Daos daos,
             FirebaseMapper firebaseMapper, Clock clock, AppProperties props) {
-        if (firebaseClient == null) {
+        if (daos == null) {
             log.warn("translate_abort reason=firebase_not_ready");
             return;
         }
         TranslationService translationService = buildTranslationService(
-                firebaseClient, firebaseMapper, clock, props);
+                daos, firebaseMapper, clock, props);
         if (translationService == null) {
             return;
         }
@@ -471,9 +485,9 @@ public final class App {
         log.info("translate_summary done={} queue_size={}", done, 0);
     }
 
-    private static TranslationService buildTranslationService(FirebaseClient firebaseClient,
+    private static TranslationService buildTranslationService(Daos daos,
             FirebaseMapper firebaseMapper, Clock clock, AppProperties props) {
-        if (firebaseClient == null) {
+        if (daos == null) {
             log.warn("translate_abort reason=firebase_not_ready");
             return null;
         }
@@ -482,7 +496,8 @@ public final class App {
             return null;
         }
         return new TranslationService(
-                firebaseClient, deeplClient, firebaseMapper, clock,
+                daos.gameDao(), daos.translationQueueDao(),
+                deeplClient, firebaseMapper, clock,
                 props.refreshMaxRetries());
     }
 
@@ -664,6 +679,41 @@ public final class App {
 
     private static long countActive(List<CheapSharkStoreDto> stores) {
         return stores.stream().filter(s -> s.isActive() == 1).count();
+    }
+
+    /**
+     * Builds the three Firestore DAOs from a {@link Firestore}
+     * handle and the app properties. The DAOs share the same
+     * collection paths and the same retry policy.
+     */
+    private static Daos buildDaos(Firestore firestore, AppProperties props) {
+        FirestoreRetrier retrier = new FirestoreRetrier();
+        GameDao gameDao = new FirestoreGameDao(
+                firestore,
+                props.firestoreCollectionGamesPath(),
+                props.firestoreReadPageSize(),
+                retrier);
+        HydrationQueueDao hydrationQueueDao = new FirestoreHydrationQueueDao(
+                firestore,
+                props.firestoreCollectionPendingPath(),
+                props.firestoreCollectionFailedPath(),
+                retrier);
+        TranslationQueueDao translationQueueDao = new FirestoreTranslationQueueDao(
+                firestore,
+                props.firestoreCollectionTranslationPendingPath(),
+                props.firestoreCollectionTranslationFailedPath(),
+                retrier);
+        return new Daos(gameDao, hydrationQueueDao, translationQueueDao);
+    }
+
+    /**
+     * Bundle of the three DAOs. Passed down to mode dispatches so
+     * they can be wired into services.
+     */
+    private record Daos(
+            GameDao gameDao,
+            HydrationQueueDao hydrationQueueDao,
+            TranslationQueueDao translationQueueDao) {
     }
 
     private static void printValidation(ValidationReport report) {

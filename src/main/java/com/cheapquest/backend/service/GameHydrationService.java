@@ -1,6 +1,7 @@
 package com.cheapquest.backend.service;
 
-import com.cheapquest.backend.client.FirebaseClient;
+import com.cheapquest.backend.dao.GameDao;
+import com.cheapquest.backend.dao.HydrationQueueDao;
 import com.cheapquest.backend.domain.AggregatedGame;
 import com.cheapquest.backend.domain.GameDeals;
 import com.cheapquest.backend.domain.rawg.RawgDetails;
@@ -71,7 +72,8 @@ public final class GameHydrationService {
 
     private static final Logger log = LoggerFactory.getLogger(GameHydrationService.class);
 
-    private final FirebaseClient firebaseClient;
+    private final GameDao gameDao;
+    private final HydrationQueueDao hydrationQueueDao;
     private final FirebaseMapper firebaseMapper;
     private final GameLookup gameLookup;
     private final GameMerger merger;
@@ -81,20 +83,21 @@ public final class GameHydrationService {
     private final Clock clock;
     private final int maxAttempts;
 
-    public GameHydrationService(FirebaseClient firebaseClient, FirebaseMapper firebaseMapper,
-            GameLookup gameLookup,
+    public GameHydrationService(GameDao gameDao, HydrationQueueDao hydrationQueueDao,
+            FirebaseMapper firebaseMapper, GameLookup gameLookup,
             GameMerger merger, ValidationService validator,
             RefreshPolicy refreshPolicy, Clock clock) {
-        this(firebaseClient, firebaseMapper, gameLookup, merger, validator,
+        this(gameDao, hydrationQueueDao, firebaseMapper, gameLookup, merger, validator,
                 refreshPolicy, null, clock, 3);
     }
 
-    public GameHydrationService(FirebaseClient firebaseClient, FirebaseMapper firebaseMapper,
-            GameLookup gameLookup,
+    public GameHydrationService(GameDao gameDao, HydrationQueueDao hydrationQueueDao,
+            FirebaseMapper firebaseMapper, GameLookup gameLookup,
             GameMerger merger, ValidationService validator,
             RefreshPolicy refreshPolicy, TranslationService translationService,
             Clock clock, int maxAttempts) {
-        this.firebaseClient = Objects.requireNonNull(firebaseClient, "firebaseClient");
+        this.gameDao = Objects.requireNonNull(gameDao, "gameDao");
+        this.hydrationQueueDao = Objects.requireNonNull(hydrationQueueDao, "hydrationQueueDao");
         this.firebaseMapper = Objects.requireNonNull(firebaseMapper, "firebaseMapper");
         this.gameLookup = Objects.requireNonNull(gameLookup, "gameLookup");
         this.merger = Objects.requireNonNull(merger, "merger");
@@ -108,13 +111,13 @@ public final class GameHydrationService {
         this.maxAttempts = maxAttempts;
     }
 
-    // Old 8-arg constructor preserved for backwards compatibility
+    // 8-arg constructor preserved for backwards compatibility
     // with tests that don't exercise the translation trigger.
-    public GameHydrationService(FirebaseClient firebaseClient, FirebaseMapper firebaseMapper,
-            GameLookup gameLookup,
+    public GameHydrationService(GameDao gameDao, HydrationQueueDao hydrationQueueDao,
+            FirebaseMapper firebaseMapper, GameLookup gameLookup,
             GameMerger merger, ValidationService validator,
             RefreshPolicy refreshPolicy, Clock clock, int maxAttempts) {
-        this(firebaseClient, firebaseMapper, gameLookup, merger, validator,
+        this(gameDao, hydrationQueueDao, firebaseMapper, gameLookup, merger, validator,
                 refreshPolicy, null, clock, maxAttempts);
     }
 
@@ -142,7 +145,7 @@ public final class GameHydrationService {
      */
     public HydrationReport hydrateAll(boolean force) {
         long start = clock.millis();
-        List<PendingDoc> pending = firebaseClient.readPending();
+        List<PendingDoc> pending = hydrationQueueDao.readPending();
         log.info("hydrate_all_start pending_count={} force={}", pending.size(), force);
 
         int processed = 0;
@@ -225,7 +228,7 @@ public final class GameHydrationService {
             throw new IllegalArgumentException(
                     "staleThreshold must be positive, got " + staleThreshold);
         }
-        List<PendingDoc> pending = firebaseClient.readPending();
+        List<PendingDoc> pending = hydrationQueueDao.readPending();
         Instant cutoff = Instant.now(clock).minus(staleThreshold);
         int recovered = 0;
         for (PendingDoc entry : pending) {
@@ -235,7 +238,7 @@ public final class GameHydrationService {
             if (entry.lastAttemptAt().isAfter(cutoff)) {
                 continue;
             }
-            firebaseClient.replacePending(new PendingDoc(
+            hydrationQueueDao.replacePending(new PendingDoc(
                     entry.slug(), 0, null, null));
             log.warn("pending_recovered slug={} previous_attempts={} previous_last_error=\"{}\"",
                     entry.slug(), entry.attempts(), entry.lastError());
@@ -258,7 +261,7 @@ public final class GameHydrationService {
      */
     private HydrationResult hydratePendingEntry(PendingDoc entry, boolean force) {
         String slug = entry.slug();
-        GameDocumentDto doc = firebaseClient.readOne(slug).orElse(null);
+        GameDocumentDto doc = gameDao.read(slug).orElse(null);
         if (doc == null) {
             log.warn("hydrate_pending_missing slug={} reason=game_doc_gone", slug);
             recordFailureAndMaybeMoveToFailed(entry, "game document gone");
@@ -269,7 +272,7 @@ public final class GameHydrationService {
             log.warn("hydrate_doc_empty slug={} reason=both_sources_failed", slug);
             return recordFailureAndMaybeMoveToFailed(entry, "both sources returned empty");
         }
-        firebaseClient.removeFromPending(slug);
+        hydrationQueueDao.removeFromPending(slug);
         return new HydrationResult(outcome, false);
     }
 
@@ -281,12 +284,12 @@ public final class GameHydrationService {
                     entry.slug(), newAttempts,
                     entry.lastAttemptAt() == null ? now : entry.lastAttemptAt(),
                     now, error);
-            firebaseClient.moveToFailed(failed);
+            hydrationQueueDao.moveToFailed(failed);
             log.warn("hydrate_doc_moved_to_failed slug={} attempts={} last_error=\"{}\"",
                     entry.slug(), newAttempts, error);
             return new HydrationResult(HydrationOutcome.emptyOutcome(), true);
         }
-        firebaseClient.recordPendingFailure(entry.slug(), newAttempts, Instant.now(clock), error);
+        hydrationQueueDao.recordFailure(entry.slug(), newAttempts, Instant.now(clock), error);
         return new HydrationResult(HydrationOutcome.emptyOutcome(), false);
     }
 
@@ -303,7 +306,7 @@ public final class GameHydrationService {
      * bypassed; when false the cadence is consulted.
      */
     public boolean hydrateOne(String slug, boolean force) {
-        GameDocumentDto doc = firebaseClient.readOne(slug).orElse(null);
+        GameDocumentDto doc = gameDao.read(slug).orElse(null);
         if (doc == null) {
             log.warn("hydrate_one_missing slug={}", slug);
             return false;
@@ -370,12 +373,12 @@ public final class GameHydrationService {
         OfferDto previousBest = doc.cheapshark() == null ? null : doc.cheapshark().bestDeal();
         HydrationPatch patch = firebaseMapper.toHydrationPatch(
                 merged, composed, decision.refreshDeals(), decision.refreshRawg(), previousBest);
-        firebaseClient.update(slug, patch);
+        gameDao.update(slug, patch);
         // Mark the english locale as synced now that the english
         // content is fresh. Done as a separate partial update so
         // the (future) translation pipeline owns locales.es and
         // locales.fr without the hydration path clobbering them.
-        firebaseClient.markLocaleSynced(slug, "en", Instant.now(clock));
+        gameDao.markLocaleSynced(slug, "en", Instant.now(clock));
         // Queue the other target locales for translation. Each
         // enqueue is idempotent (ALREADY_EXISTS is a no-op), so a
         // second hydration run that doesn't bump rawg.fetchedAt

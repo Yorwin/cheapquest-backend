@@ -21,7 +21,7 @@ import org.slf4j.LoggerFactory;
  * {@code true} without touching the SDK.
  *
  * <p>No Firestore reads or writes are issued from this class. That is the
- * responsibility of the (not yet implemented) {@code FirebaseClient}.
+ * responsibility of the DAO layer.
  */
 public final class FirebaseConfig {
 

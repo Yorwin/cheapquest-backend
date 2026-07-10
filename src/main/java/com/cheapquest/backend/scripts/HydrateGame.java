@@ -1,8 +1,12 @@
 package com.cheapquest.backend.scripts;
 
 import com.cheapquest.backend.client.CheapSharkClient;
-import com.cheapquest.backend.client.FirebaseClient;
+import com.cheapquest.backend.client.FirestoreRetrier;
 import com.cheapquest.backend.client.RawgClient;
+import com.cheapquest.backend.dao.GameDao;
+import com.cheapquest.backend.dao.HydrationQueueDao;
+import com.cheapquest.backend.dao.firestore.FirestoreGameDao;
+import com.cheapquest.backend.dao.firestore.FirestoreHydrationQueueDao;
 import com.cheapquest.backend.config.AppProperties;
 import com.cheapquest.backend.config.DefaultHttpFetcher;
 import com.cheapquest.backend.config.FirebaseConfig;
@@ -94,12 +98,18 @@ public final class HydrateGame {
         RefreshPolicy refreshPolicy = new RefreshPolicy(props, clock);
 
         Firestore firestore = FirestoreClient.getFirestore(FirebaseApp.getInstance());
-        FirebaseClient firebaseClient = new FirebaseClient(firestore, props);
+        FirestoreRetrier retrier = new FirestoreRetrier();
+        GameDao gameDao = new FirestoreGameDao(
+                firestore, props.firestoreCollectionGamesPath(),
+                props.firestoreReadPageSize(), retrier);
+        HydrationQueueDao hydrationQueueDao = new FirestoreHydrationQueueDao(
+                firestore, props.firestoreCollectionPendingPath(),
+                props.firestoreCollectionFailedPath(), retrier);
         FirebaseMapper firebaseMapper = new FirebaseMapper(clock);
 
         GameLookup gameLookup = new GameLookupService(service, rawgService);
         GameHydrationService hydration = new GameHydrationService(
-                firebaseClient, firebaseMapper, gameLookup, merger,
+                gameDao, hydrationQueueDao, firebaseMapper, gameLookup, merger,
                 validator, refreshPolicy, clock, props.refreshMaxRetries());
 
         String slug = args.length > 0 ? args[0] : "baldurs-gate-3";

@@ -1,8 +1,11 @@
 package com.cheapquest.backend.scripts;
 
+import com.cheapquest.backend.client.FirestoreRetrier;
 import com.cheapquest.backend.config.AppProperties;
 import com.cheapquest.backend.config.FirebaseConfig;
 import com.cheapquest.backend.config.HttpClientFactory;
+import com.cheapquest.backend.dao.GameDao;
+import com.cheapquest.backend.dao.firestore.FirestoreGameDao;
 import com.cheapquest.backend.domain.sections.GameView;
 import com.cheapquest.backend.domain.sections.SectionName;
 import com.cheapquest.backend.mapper.GameViewMapper;
@@ -87,11 +90,12 @@ public final class ComputeSections {
                         props.sectionsMaxItems(SectionName.NUEVAS_OFERTAS),
                         props.sectionsNewOffersWindowDays(), clock));
 
-        com.cheapquest.backend.client.FirebaseClient firebaseClient =
-                new com.cheapquest.backend.client.FirebaseClient(firestore, props);
+        GameDao gameDao = new FirestoreGameDao(
+                firestore, props.firestoreCollectionGamesPath(),
+                props.firestoreReadPageSize(), new FirestoreRetrier());
 
         Supplier<List<GameView>> catalogSupplier =
-                () -> gameViewMapper.toGameViews(firebaseClient.readAll());
+                () -> gameViewMapper.toGameViews(gameDao.readAll());
 
         SectionsService sectionsService = new SectionsService(
                 sectionStore, sectionsLock, sectionBuilders,

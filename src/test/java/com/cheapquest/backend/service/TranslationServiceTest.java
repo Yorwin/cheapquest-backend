@@ -13,13 +13,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.cheapquest.backend.client.DeepLClient;
-import com.cheapquest.backend.client.FirebaseClient;
+import com.cheapquest.backend.dao.GameDao;
+import com.cheapquest.backend.dao.TranslationQueueDao;
 import com.cheapquest.backend.domain.rawg.RawgGenre;
 import com.cheapquest.backend.domain.rawg.RawgTag;
-import com.cheapquest.backend.dto.firebase.FailedDoc;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
 import com.cheapquest.backend.dto.firebase.LocaleBlock;
-import com.cheapquest.backend.dto.firebase.PendingDoc;
 import com.cheapquest.backend.dto.firebase.RawgBlock;
 import com.cheapquest.backend.dto.firebase.RawgDocumentDto;
 import com.cheapquest.backend.dto.firebase.TranslationFailedDoc;
@@ -41,7 +40,8 @@ class TranslationServiceTest {
     private static final Instant T = Instant.parse("2026-06-30T10:00:00Z");
     private static final Instant T2 = Instant.parse("2026-06-30T10:05:00Z");
 
-    private FirebaseClient firebaseClient;
+    private GameDao gameDao;
+    private TranslationQueueDao translationQueueDao;
     private DeepLClient deepLClient;
     private FirebaseMapper firebaseMapper;
     private Clock clock;
@@ -49,27 +49,28 @@ class TranslationServiceTest {
 
     @BeforeEach
     void setUp() {
-        firebaseClient = mock(FirebaseClient.class);
+        gameDao = mock(GameDao.class);
+        translationQueueDao = mock(TranslationQueueDao.class);
         deepLClient = mock(DeepLClient.class);
         firebaseMapper = mock(FirebaseMapper.class);
         clock = Clock.fixed(T2, ZoneOffset.UTC);
-        service = new TranslationService(firebaseClient, deepLClient, firebaseMapper,
-                clock, 3, List.of("es", "fr"));
+        service = new TranslationService(gameDao, translationQueueDao, deepLClient,
+                firebaseMapper, clock, 3, List.of("es", "fr"));
     }
 
     @Test
-    void markStaleAndEnqueue_callsFirebaseForEachTargetLocale() {
+    void markStaleAndEnqueue_callsDaoForEachTargetLocale() {
         service.markStaleAndEnqueue("portal", T);
 
-        verify(firebaseClient).enqueueTranslation("portal", "es", T);
-        verify(firebaseClient).enqueueTranslation("portal", "fr", T);
+        verify(translationQueueDao).enqueue("portal", "es", T);
+        verify(translationQueueDao).enqueue("portal", "fr", T);
     }
 
     @Test
     void markStaleAndEnqueue_isNoOpForNullInputs() {
         service.markStaleAndEnqueue(null, T);
         service.markStaleAndEnqueue("portal", null);
-        verify(firebaseClient, never()).enqueueTranslation(anyString(), anyString(), any());
+        verify(translationQueueDao, never()).enqueue(anyString(), anyString(), any());
     }
 
     @Test
@@ -78,9 +79,9 @@ class TranslationServiceTest {
                 "portal", "es", T, 1, T, null);
         TranslationPendingDoc p2 = new TranslationPendingDoc(
                 "hl2", "fr", T, 1, T, null);
-        when(firebaseClient.readTranslationPending()).thenReturn(List.of(p1, p2));
-        when(firebaseClient.readOne("portal")).thenReturn(Optional.of(sampleGame("portal")));
-        when(firebaseClient.readOne("hl2")).thenReturn(Optional.of(sampleGame("hl2")));
+        when(translationQueueDao.readPending()).thenReturn(List.of(p1, p2));
+        when(gameDao.read("portal")).thenReturn(Optional.of(sampleGame("portal")));
+        when(gameDao.read("hl2")).thenReturn(Optional.of(sampleGame("hl2")));
         when(deepLClient.translate(anyList(), eq("es")))
                 .thenReturn(List.of("<p>Hola</p>"));
         when(deepLClient.translate(anyList(), eq("fr")))
@@ -90,17 +91,17 @@ class TranslationServiceTest {
 
         assertThat(done).isEqualTo(2);
         verify(deepLClient, times(2)).translate(anyList(), anyString());
-        verify(firebaseClient).writeLocaleTranslation(
+        verify(gameDao).writeLocaleTranslation(
                 eq("portal"), eq("es"), anyString(), anyList(), eq(T), eq(T2));
-        verify(firebaseClient).removeFromTranslationPending("portal", "es");
-        verify(firebaseClient).removeFromTranslationPending("hl2", "fr");
+        verify(translationQueueDao).removeFromPending("portal", "es");
+        verify(translationQueueDao).removeFromPending("hl2", "fr");
     }
 
     @Test
-    void translateOne_writesDescriptionAndTagsAndRemovesFromPending() throws Exception {
+    void translateOne_writesDescriptionAndTagsAndRemovesFromPending() {
         TranslationPendingDoc entry = new TranslationPendingDoc(
                 "portal", "es", T, 1, T, null);
-        when(firebaseClient.readOne("portal")).thenReturn(Optional.of(sampleGame("portal")));
+        when(gameDao.read("portal")).thenReturn(Optional.of(sampleGame("portal")));
         when(deepLClient.translate(anyList(), eq("es")))
                 .thenReturn(List.of("<p>Hola mundo</p>", "Acción", "Aventura"));
 
@@ -110,20 +111,20 @@ class TranslationServiceTest {
         ArgumentCaptor<String> descCaptor = ArgumentCaptor.forClass(String.class);
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<String>> tagsCaptor = ArgumentCaptor.forClass(List.class);
-        verify(firebaseClient).writeLocaleTranslation(
+        verify(gameDao).writeLocaleTranslation(
                 eq("portal"), eq("es"),
                 descCaptor.capture(), tagsCaptor.capture(),
                 eq(T), eq(T2));
-        verify(firebaseClient).removeFromTranslationPending("portal", "es");
+        verify(translationQueueDao).removeFromPending("portal", "es");
         assertThat(descCaptor.getValue()).isEqualTo("<p>Hola mundo</p>");
         assertThat(tagsCaptor.getValue()).containsExactly("Acción", "Aventura");
     }
 
     @Test
-    void translateOne_skipsNullsInInputs() throws Exception {
+    void translateOne_skipsNullsInInputs() {
         TranslationPendingDoc entry = new TranslationPendingDoc(
                 "portal", "es", T, 1, T, null);
-        when(firebaseClient.readOne("portal")).thenReturn(Optional.of(sampleGame("portal")));
+        when(gameDao.read("portal")).thenReturn(Optional.of(sampleGame("portal")));
         // null source description is skipped by DeepLClient; the
         // returned list still has 3 entries (1 description + 2 tags).
         when(deepLClient.translate(anyList(), eq("es")))
@@ -132,23 +133,23 @@ class TranslationServiceTest {
         boolean ok = service.translateOne(entry);
 
         assertThat(ok).isTrue();
-        verify(firebaseClient).removeFromTranslationPending("portal", "es");
+        verify(translationQueueDao).removeFromPending("portal", "es");
     }
 
     @Test
     void translateOne_handlesMissingGameDoc() {
         TranslationPendingDoc entry = new TranslationPendingDoc(
                 "ghost", "es", T, 1, T, null);
-        when(firebaseClient.readOne("ghost")).thenReturn(Optional.empty());
+        when(gameDao.read("ghost")).thenReturn(Optional.empty());
 
         boolean ok = service.translateOne(entry);
 
         assertThat(ok).isFalse();
         // attempt counter was bumped, not moved to failed (this is
         // attempt 1 of 3).
-        verify(firebaseClient).recordTranslationFailure(
+        verify(translationQueueDao).recordFailure(
                 eq("ghost"), eq("es"), eq(2), eq(T2), eq("game document gone"));
-        verify(firebaseClient, never()).moveToTranslationFailed(any());
+        verify(translationQueueDao, never()).moveToFailed(any());
     }
 
     @Test
@@ -163,12 +164,12 @@ class TranslationServiceTest {
                         "en", LocaleBlock.unsynced(),
                         "fr", LocaleBlock.unsynced()),
                 null);
-        when(firebaseClient.readOne("no-rawg")).thenReturn(Optional.of(doc));
+        when(gameDao.read("no-rawg")).thenReturn(Optional.of(doc));
 
         boolean ok = service.translateOne(entry);
 
         assertThat(ok).isFalse();
-        verify(firebaseClient).recordTranslationFailure(
+        verify(translationQueueDao).recordFailure(
                 eq("no-rawg"), eq("es"), eq(2), eq(T2), eq("no rawg data"));
     }
 
@@ -177,29 +178,29 @@ class TranslationServiceTest {
         // attempts=2 + 1 = 3 >= maxAttempts (3) -> move to failed
         TranslationPendingDoc entry = new TranslationPendingDoc(
                 "stuck", "es", T, 2, T, "previous error");
-        when(firebaseClient.readOne("stuck")).thenReturn(Optional.empty());
+        when(gameDao.read("stuck")).thenReturn(Optional.empty());
 
         boolean ok = service.translateOne(entry);
 
         assertThat(ok).isFalse();
         ArgumentCaptor<TranslationFailedDoc> captor =
                 ArgumentCaptor.forClass(TranslationFailedDoc.class);
-        verify(firebaseClient).moveToTranslationFailed(captor.capture());
+        verify(translationQueueDao).moveToFailed(captor.capture());
         assertThat(captor.getValue().slug()).isEqualTo("stuck");
         assertThat(captor.getValue().locale()).isEqualTo("es");
         assertThat(captor.getValue().attempts()).isEqualTo(3);
         assertThat(captor.getValue().lastError()).isEqualTo("game document gone");
-        // No recordTranslationFailure call: the moveToTranslationFailed
-        // already includes the bump in its DLQ entry.
-        verify(firebaseClient, never()).recordTranslationFailure(
+        // No recordFailure call: the moveToFailed already includes
+        // the bump in its DLQ entry.
+        verify(translationQueueDao, never()).recordFailure(
                 anyString(), anyString(), anyInt(), any(), anyString());
     }
 
     @Test
-    void translateOne_wrapsDeepLExceptionAndBumpsAttempt() throws Exception {
+    void translateOne_wrapsDeepLExceptionAndBumpsAttempt() {
         TranslationPendingDoc entry = new TranslationPendingDoc(
                 "portal", "es", T, 1, T, null);
-        when(firebaseClient.readOne("portal")).thenReturn(Optional.of(sampleGame("portal")));
+        when(gameDao.read("portal")).thenReturn(Optional.of(sampleGame("portal")));
         when(deepLClient.translate(anyList(), eq("es")))
                 .thenThrow(new TranslationFailedException("quota exhausted",
                         new RuntimeException("rate limit")));
@@ -207,46 +208,46 @@ class TranslationServiceTest {
         boolean ok = service.translateOne(entry);
 
         assertThat(ok).isFalse();
-        verify(firebaseClient).recordTranslationFailure(
+        verify(translationQueueDao).recordFailure(
                 eq("portal"), eq("es"), eq(2), eq(T2), eq("quota exhausted"));
-        verify(firebaseClient, never()).moveToTranslationFailed(any());
+        verify(translationQueueDao, never()).moveToFailed(any());
     }
 
     @Test
     void translateOne_wrapsRuntimeException() {
         TranslationPendingDoc entry = new TranslationPendingDoc(
                 "portal", "es", T, 1, T, null);
-        when(firebaseClient.readOne("portal"))
+        when(gameDao.read("portal"))
                 .thenThrow(new RuntimeException("Firestore blip"));
 
         boolean ok = service.translateOne(entry);
 
         assertThat(ok).isFalse();
-        verify(firebaseClient).recordTranslationFailure(
+        verify(translationQueueDao).recordFailure(
                 eq("portal"), eq("es"), eq(2), eq(T2), eq("RuntimeException: Firestore blip"));
     }
 
     @Test
-    void translateOne_preservesSourceFetchedAtOnSuccess() throws Exception {
+    void translateOne_preservesSourceFetchedAtOnSuccess() {
         // sourceFetchedAt is propagated to the LocaleBlock so
         // the next hydration can detect that the translation is
         // still current.
         TranslationPendingDoc entry = new TranslationPendingDoc(
                 "portal", "es", T, 1, T, null);
-        when(firebaseClient.readOne("portal")).thenReturn(Optional.of(sampleGame("portal")));
+        when(gameDao.read("portal")).thenReturn(Optional.of(sampleGame("portal")));
         when(deepLClient.translate(anyList(), eq("es")))
                 .thenReturn(List.of("<p>Hola</p>", "Acción", "Aventura"));
 
         service.translateOne(entry);
 
-        verify(firebaseClient).writeLocaleTranslation(
+        verify(gameDao).writeLocaleTranslation(
                 eq("portal"), eq("es"), anyString(), anyList(),
                 eq(T), any(Instant.class));
     }
 
     @Test
     void translateAll_returnsZeroForEmptyQueue() {
-        when(firebaseClient.readTranslationPending()).thenReturn(List.of());
+        when(translationQueueDao.readPending()).thenReturn(List.of());
 
         int done = service.translateAll();
 

@@ -1,6 +1,6 @@
 package com.cheapquest.backend.service;
 
-import com.cheapquest.backend.client.FirebaseClient;
+import com.cheapquest.backend.dao.HydrationQueueDao;
 import com.cheapquest.backend.dto.firebase.FailedDoc;
 import com.cheapquest.backend.dto.firebase.PendingDoc;
 import java.time.Instant;
@@ -10,7 +10,7 @@ import java.util.Objects;
 /**
  * Read-only access to the hydration queues
  * ({@code pending} and {@code failed}). Wraps the two
- * {@link FirebaseClient} read methods and projects the
+ * {@link HydrationQueueDao} read methods and projects the
  * Firestore DTOs onto a single, JSON-friendly shape so the
  * HTTP layer does not have to special-case {@link PendingDoc}
  * vs {@link FailedDoc} (the latter carries an extra
@@ -28,24 +28,24 @@ public final class GameQueueService {
         PENDING, FAILED
     }
 
-    private final FirebaseClient firebaseClient;
+    private final HydrationQueueDao hydrationQueueDao;
 
-    public GameQueueService(FirebaseClient firebaseClient) {
-        this.firebaseClient = Objects.requireNonNull(firebaseClient, "firebaseClient");
+    public GameQueueService(HydrationQueueDao hydrationQueueDao) {
+        this.hydrationQueueDao = Objects.requireNonNull(hydrationQueueDao, "hydrationQueueDao");
     }
 
     /**
      * Read the requested queue. {@link Status#PENDING} maps to
-     * {@link FirebaseClient#readPending()}; {@link Status#FAILED}
-     * maps to {@link FirebaseClient#readFailed()}.
+     * {@link HydrationQueueDao#readPending()}; {@link Status#FAILED}
+     * maps to {@link HydrationQueueDao#readFailed()}.
      */
     public List<QueueEntry> list(Status status) {
         Objects.requireNonNull(status, "status");
         return switch (status) {
-            case PENDING -> firebaseClient.readPending().stream()
+            case PENDING -> hydrationQueueDao.readPending().stream()
                     .map(GameQueueService::fromPending)
                     .toList();
-            case FAILED -> firebaseClient.readFailed().stream()
+            case FAILED -> hydrationQueueDao.readFailed().stream()
                     .map(GameQueueService::fromFailed)
                     .toList();
         };

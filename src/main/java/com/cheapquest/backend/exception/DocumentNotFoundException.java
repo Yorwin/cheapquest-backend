@@ -1,7 +1,7 @@
 package com.cheapquest.backend.exception;
 
 /**
- * Raised by {@code FirebaseClient.update} when the target document
+ * Raised by {@code GameDao.update} when the target document
  * no longer exists at the time of the write. This is distinct
  * from {@link FirebaseUnavailableException}: a missing document
  * is a logical state (the operator deleted it between read and

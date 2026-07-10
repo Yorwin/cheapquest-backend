@@ -398,7 +398,7 @@ class FirebaseMapperTest {
         // service writes locales.es and locales.fr; the hydration
         // path would clobber them on every refresh if locales were
         // bundled in. The en locale is updated separately via
-        // FirebaseClient.markLocaleSynced.
+        // GameDao.markLocaleSynced.
         AggregatedGame game = new AggregatedGame("Portal", "Portal", "portal",
                 fullDeals(), fullRawg(), T);
         ValidationReport report = new ValidationReport(

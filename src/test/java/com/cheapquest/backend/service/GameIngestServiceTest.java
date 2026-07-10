@@ -11,7 +11,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.cheapquest.backend.client.FirebaseClient;
+import com.cheapquest.backend.dao.GameDao;
+import com.cheapquest.backend.dao.HydrationQueueDao;
 import com.cheapquest.backend.dto.firebase.GameDocumentDto;
 import com.cheapquest.backend.mapper.FirebaseMapper;
 import com.cheapquest.backend.service.GameIngestService.IngestAction;
@@ -33,22 +34,24 @@ class GameIngestServiceTest {
 
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-06-30T10:00:00Z"), ZoneOffset.UTC);
 
-    private FirebaseClient firebaseClient;
+    private GameDao gameDao;
+    private HydrationQueueDao hydrationQueueDao;
     private FirebaseMapper firebaseMapper;
     private GameIngestService service;
 
     @BeforeEach
     void setUp() {
-        firebaseClient = mock(FirebaseClient.class);
+        gameDao = mock(GameDao.class);
+        hydrationQueueDao = mock(HydrationQueueDao.class);
         firebaseMapper = mock(FirebaseMapper.class);
-        service = new GameIngestService(firebaseClient, firebaseMapper, CLOCK);
+        service = new GameIngestService(gameDao, hydrationQueueDao, firebaseMapper, CLOCK);
         when(firebaseMapper.toBootstrapDocument(anyString(), anyString()))
                 .thenReturn(mock(GameDocumentDto.class));
     }
 
     @Test
     void ingest_createsAllDocsAndEnqueuesAll() {
-        when(firebaseClient.createIfNotExists(anyString(), any())).thenReturn(true);
+        when(gameDao.createIfNotExists(anyString(), any())).thenReturn(true);
 
         IngestOutcome out = service.ingest(List.of("Portal", "Half-Life 2", "Stardew Valley"), null);
 
@@ -57,14 +60,14 @@ class GameIngestServiceTest {
         assertThat(out.accepted()).extracting(IngestItem::action)
                 .containsOnly(IngestAction.CREATED);
         assertThat(out.failed()).isEmpty();
-        verify(firebaseClient, times(3)).createIfNotExists(anyString(), any());
-        verify(firebaseClient, times(3)).addToPending(anyString());
+        verify(gameDao, times(3)).createIfNotExists(anyString(), any());
+        verify(hydrationQueueDao, times(3)).enqueue(anyString());
     }
 
     @Test
     void ingest_marksAlreadyExistedWhenDocPresent() {
-        when(firebaseClient.createIfNotExists(eq("portal"), any())).thenReturn(true);
-        when(firebaseClient.createIfNotExists(eq("hades"), any())).thenReturn(false);
+        when(gameDao.createIfNotExists(eq("portal"), any())).thenReturn(true);
+        when(gameDao.createIfNotExists(eq("hades"), any())).thenReturn(false);
 
         IngestOutcome out = service.ingest(List.of("Portal", "Hades"), null);
 
@@ -73,25 +76,25 @@ class GameIngestServiceTest {
         assertThat(out.accepted().get(1).action()).isEqualTo(IngestAction.ALREADY_EXISTED);
         // Even already-existing docs are enqueued: a stale or
         // failed doc gets a second chance on the next refresh.
-        verify(firebaseClient, times(2)).addToPending(anyString());
+        verify(hydrationQueueDao, times(2)).enqueue(anyString());
     }
 
     @Test
     void ingest_dedupesWithinBatchPreservingFirstOccurrenceOrder() {
-        when(firebaseClient.createIfNotExists(anyString(), any())).thenReturn(true);
+        when(gameDao.createIfNotExists(anyString(), any())).thenReturn(true);
 
         IngestOutcome out = service.ingest(
                 List.of("Portal", "Hades", "Portal", "Stardew Valley", "Hades"), null);
 
         assertThat(out.accepted()).extracting(IngestItem::name)
                 .containsExactly("Portal", "Hades", "Stardew Valley");
-        verify(firebaseClient, times(3)).createIfNotExists(anyString(), any());
-        verify(firebaseClient, times(3)).addToPending(anyString());
+        verify(gameDao, times(3)).createIfNotExists(anyString(), any());
+        verify(hydrationQueueDao, times(3)).enqueue(anyString());
     }
 
     @Test
     void ingest_normalisesWhitespaceAndTrims() {
-        when(firebaseClient.createIfNotExists(anyString(), any())).thenReturn(true);
+        when(gameDao.createIfNotExists(anyString(), any())).thenReturn(true);
 
         IngestOutcome out = service.ingest(
                 List.of("  Portal  ", "Half\tLife 2", "  Stardew\nValley  "), null);
@@ -105,7 +108,7 @@ class GameIngestServiceTest {
 
     @Test
     void ingest_capturesEmptyNameAsFailureWithoutAbortingBatch() {
-        when(firebaseClient.createIfNotExists(anyString(), any())).thenReturn(true);
+        when(gameDao.createIfNotExists(anyString(), any())).thenReturn(true);
 
         // Arrays.asList instead of List.of because the input
         // contains a null that List.of rejects.
@@ -125,8 +128,8 @@ class GameIngestServiceTest {
         // The mapper mock bypasses toSlug, so we exercise the
         // real mapper to verify the integration.
         GameIngestService realService = new GameIngestService(
-                firebaseClient, new FirebaseMapper(CLOCK), CLOCK);
-        when(firebaseClient.createIfNotExists(anyString(), any())).thenReturn(true);
+                gameDao, hydrationQueueDao, new FirebaseMapper(CLOCK), CLOCK);
+        when(gameDao.createIfNotExists(anyString(), any())).thenReturn(true);
 
         IngestOutcome out = realService.ingest(List.of("!!!", "Portal"), null);
 
@@ -135,16 +138,16 @@ class GameIngestServiceTest {
         assertThat(out.failed().get(0).error()).contains("empty slug");
         assertThat(out.accepted()).extracting(IngestItem::name)
                 .containsExactly("Portal");
-        // No Firestore write for the name that failed slug derivation.
-        verify(firebaseClient, never()).createIfNotExists(eq("!!!"), any());
+        // No DAO write for the name that failed slug derivation.
+        verify(gameDao, never()).createIfNotExists(eq("!!!"), any());
     }
 
     @Test
-    void ingest_capturesFirebaseFailureAndContinues() {
-        when(firebaseClient.createIfNotExists(eq("portal"), any())).thenReturn(true);
-        when(firebaseClient.createIfNotExists(eq("hades"), any()))
+    void ingest_capturesDaoFailureAndContinues() {
+        when(gameDao.createIfNotExists(eq("portal"), any())).thenReturn(true);
+        when(gameDao.createIfNotExists(eq("hades"), any()))
                 .thenThrow(new RuntimeException("firestore blip"));
-        when(firebaseClient.createIfNotExists(eq("stardew-valley"), any())).thenReturn(true);
+        when(gameDao.createIfNotExists(eq("stardew-valley"), any())).thenReturn(true);
 
         IngestOutcome out = service.ingest(
                 List.of("Portal", "Hades", "Stardew Valley"), null);
@@ -158,7 +161,7 @@ class GameIngestServiceTest {
 
     @Test
     void ingest_acceptsExplicitEnglishLanguage() {
-        when(firebaseClient.createIfNotExists(anyString(), any())).thenReturn(true);
+        when(gameDao.createIfNotExists(anyString(), any())).thenReturn(true);
 
         IngestOutcome out = service.ingest(List.of("Portal"), "en");
 
@@ -175,7 +178,7 @@ class GameIngestServiceTest {
         assertThatThrownBy(() -> service.ingest(List.of("Portal"), "de"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("de");
-        verify(firebaseClient, never()).createIfNotExists(anyString(), any());
+        verify(gameDao, never()).createIfNotExists(anyString(), any());
     }
 
     @Test
@@ -186,7 +189,7 @@ class GameIngestServiceTest {
         assertThatThrownBy(() -> service.ingest(List.of(), null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("non-empty");
-        verify(firebaseClient, never()).createIfNotExists(anyString(), any());
+        verify(gameDao, never()).createIfNotExists(anyString(), any());
     }
 
     @Test
@@ -198,7 +201,7 @@ class GameIngestServiceTest {
         assertThatThrownBy(() -> service.ingest(oversized, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("exceeds maximum");
-        verify(firebaseClient, never()).createIfNotExists(anyString(), any());
+        verify(gameDao, never()).createIfNotExists(anyString(), any());
     }
 
     @Test
@@ -206,21 +209,21 @@ class GameIngestServiceTest {
         List<String> atMax = IntStream.range(0, GameIngestService.MAX_BATCH_SIZE)
                 .mapToObj(i -> "Game " + i)
                 .toList();
-        when(firebaseClient.createIfNotExists(anyString(), any())).thenReturn(true);
+        when(gameDao.createIfNotExists(anyString(), any())).thenReturn(true);
 
         IngestOutcome out = service.ingest(atMax, null);
 
         assertThat(out.accepted()).hasSize(GameIngestService.MAX_BATCH_SIZE);
         assertThat(out.failed()).isEmpty();
-        verify(firebaseClient, times(GameIngestService.MAX_BATCH_SIZE))
+        verify(gameDao, times(GameIngestService.MAX_BATCH_SIZE))
                 .createIfNotExists(anyString(), any());
     }
 
     @Test
     void ingest_resubmitOnPartialFailureIsSafe() {
         // First call: "Portal" creates OK, "Hades" fails.
-        when(firebaseClient.createIfNotExists(eq("portal"), any())).thenReturn(true);
-        when(firebaseClient.createIfNotExists(eq("hades"), any()))
+        when(gameDao.createIfNotExists(eq("portal"), any())).thenReturn(true);
+        when(gameDao.createIfNotExists(eq("hades"), any()))
                 .thenThrow(new RuntimeException("blip"))
                 .thenReturn(false); // second call: doc already exists from a previous run
 
@@ -244,7 +247,7 @@ class GameIngestServiceTest {
 
     @Test
     void ingest_preservesOriginalNameInFailureEvenIfNull() {
-        when(firebaseClient.createIfNotExists(anyString(), any())).thenReturn(true);
+        when(gameDao.createIfNotExists(anyString(), any())).thenReturn(true);
 
         IngestOutcome out = service.ingest(
                 new ArrayList<>(List.of("", "Portal")), null);
@@ -260,7 +263,7 @@ class GameIngestServiceTest {
 
     @Test
     void ingest_handlesEmptyFailureList() {
-        when(firebaseClient.createIfNotExists(anyString(), any())).thenReturn(true);
+        when(gameDao.createIfNotExists(anyString(), any())).thenReturn(true);
 
         IngestOutcome out = service.ingest(List.of("Portal"), null);
 
@@ -269,9 +272,9 @@ class GameIngestServiceTest {
     }
 
     @Test
-    void ingest_passesCorrectSlugToFirebaseClient() {
+    void ingest_passesCorrectSlugToGameDao() {
         ArgumentCaptor<String> slugCaptor = ArgumentCaptor.forClass(String.class);
-        when(firebaseClient.createIfNotExists(slugCaptor.capture(), any())).thenReturn(true);
+        when(gameDao.createIfNotExists(slugCaptor.capture(), any())).thenReturn(true);
 
         service.ingest(List.of("Half-Life 2"), null);
 
@@ -280,7 +283,7 @@ class GameIngestServiceTest {
 
     @Test
     void ingest_preservesNullInInputList() {
-        when(firebaseClient.createIfNotExists(anyString(), any())).thenReturn(true);
+        when(gameDao.createIfNotExists(anyString(), any())).thenReturn(true);
 
         IngestOutcome out = service.ingest(
                 new ArrayList<>(java.util.Arrays.asList("Portal", null, "  ", "Hades")), null);
